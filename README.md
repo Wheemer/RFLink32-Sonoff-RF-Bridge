@@ -1,3 +1,24 @@
+# RFLink32 - Sonoff RF Bridge build
+
+This fork is a constrained Sonoff RF Bridge oriented build of RFLink32.
+
+It keeps the RFLink32 command path but adds the pieces needed for reliable long
+raw RF sends from Home Assistant:
+
+- larger configurable MQTT, Serial2Net, and serial RX buffers
+- Sonoff RF Bridge build defaults for the ESP8285 target
+- a lighter built-in web UI for the constrained device
+- captive portal improvements for first-time AP setup
+- RFLink32 hardware/build metadata in status output
+
+OTA/web firmware updating is intentionally not part of this build. Flash by
+serial.
+
+The original upstream project is
+[cpainchaud/RFLink32](https://github.com/cpainchaud/RFLink32).
+
+---
+
 # RFLink ESP
 
 This is a Radio Frequency to MQTT/Serial/TCP gateway built for ESP32 and ESP8266 boards (see #MCU for more).

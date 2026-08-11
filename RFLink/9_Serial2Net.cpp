@@ -8,6 +8,10 @@
 #include <WiFiServer.h>
 #include <lwip/sockets.h>
 
+#ifndef RFLINK_SERIAL2NET_BUFFER_SIZE
+#define RFLINK_SERIAL2NET_BUFFER_SIZE 1024
+#endif
+
 namespace RFLink {
   namespace Serial2Net {
 
@@ -15,9 +19,9 @@ namespace RFLink {
 
     private:
       #ifdef ESP32
-      static const uint16_t __buffer_size = 1024;
+      static const uint16_t __buffer_size = RFLINK_SERIAL2NET_BUFFER_SIZE;
       #else
-      static const uint16_t __buffer_size = 256;
+      static const uint16_t __buffer_size = RFLINK_SERIAL2NET_BUFFER_SIZE;
       #endif
       uint16_t buffer_end;
 
@@ -122,7 +126,7 @@ namespace RFLink {
     const char json_name_port[] = "port";
 
     Config::ConfigItem configItems[] = {
-            Config::ConfigItem(json_name_enabled, Config::SectionId::Serial2Net_id, false, paramsUpdatedCallback),
+            Config::ConfigItem(json_name_enabled, Config::SectionId::Serial2Net_id, true, paramsUpdatedCallback),
             Config::ConfigItem(json_name_port, Config::SectionId::Serial2Net_id, SERIAL2NET_PORT,
                                paramsUpdatedCallback),
             Config::ConfigItem()};

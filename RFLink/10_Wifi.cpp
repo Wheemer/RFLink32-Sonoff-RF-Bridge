@@ -5,9 +5,6 @@
 
 #include "6_Credentials.h"
 #include "10_Wifi.h"
-#ifdef RFLINK_OTA_ENABLED
-#include <ArduinoOTA.h>
-#endif
 #include "2_Signal.h"
 #include "6_MQTT.h"
 #include "9_Serial2Net.h"
@@ -18,13 +15,11 @@ extern "C" {
 }
 #include "esp_sntp.h"
 #else // NOT ESP32
+  #include <DNSServer.h>
   #include <ESP8266TrueRandom.h>
+  #include <LwipDhcpServer-NonOS.h>
 #endif // ESP32
 
-
-#ifdef RFLINK_AUTOOTA_ENABLED
-const String autoota_url_paramid("autoota_url");
-#endif
 
 namespace RFLink { namespace Wifi {
 
@@ -57,6 +52,11 @@ namespace RFLink { namespace Wifi {
         bool clientParamsHaveChanged = false; // this will be set to True when Client Wifi mode configuration has changed
         bool accessPointParamsHaveChanged = false; // this will be set to True when Client Wifi mode configuration has changed
         unsigned short int cpWifiChannel = 1; // channel for CaptivePortal (will be randomized later)
+#ifdef ESP8266
+        DNSServer captiveDnsServer;
+        bool captiveDnsStarted = false;
+        unsigned long captiveDnsLastRetry = 0;
+#endif
 
         // All json variable names
         const char json_name_client_enabled[] = "client_enabled";
@@ -226,6 +226,81 @@ namespace RFLink { namespace Wifi {
 
         static String WIFI_PWR = String(WIFI_PWR_0);
 
+#ifdef ESP8266
+        IPAddress getAccessPointIP() {
+          IPAddress ip(192, 168, 4, 1);
+          ip.fromString(params::AP_ip);
+          return ip;
+        }
+
+        IPAddress getAccessPointMask() {
+          IPAddress mask(255, 255, 255, 0);
+          mask.fromString(params::AP_mask);
+          return mask;
+        }
+
+        void stopCaptiveDns() {
+          if(captiveDnsStarted) {
+            captiveDnsServer.stop();
+            captiveDnsStarted = false;
+          }
+        }
+
+        void startCaptiveDns() {
+          stopCaptiveDns();
+          captiveDnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+          if(captiveDnsServer.start(53, "*", WiFi.softAPIP())) {
+            captiveDnsStarted = true;
+            captiveDnsLastRetry = 0;
+            Serial.printf_P(PSTR("Captive portal DNS started on %s\r\n"), WiFi.softAPIP().toString().c_str());
+          } else {
+            captiveDnsLastRetry = millis();
+            Serial.println(F("Captive portal DNS start FAILED"));
+          }
+        }
+
+        void addCaptivePortalDhcpOption(const DhcpServer&, DhcpServer::OptionsBuffer &options) {
+          char capport[48];
+          snprintf_P(capport, sizeof(capport), PSTR("http://%s/capport"), WiFi.softAPIP().toString().c_str());
+          options.add(114, capport);
+        }
+
+        void startCaptivePortalDhcpOptions() {
+          getNonOSDhcpServer().onSendOptions(addCaptivePortalDhcpOption);
+        }
+
+        void configureAccessPointNetwork() {
+          IPAddress ip = getAccessPointIP();
+          IPAddress mask = getAccessPointMask();
+          if(!WiFi.softAPConfig(ip, ip, mask)) {
+            Serial.println(F("WIFI AP network config FAILED"));
+          }
+        }
+#endif
+
+        bool startAccessPoint() {
+#ifdef ESP8266
+          configureAccessPointNetwork();
+          startCaptivePortalDhcpOptions();
+#endif
+          bool ok = WiFi.softAP(params::AP_ssid.c_str(), params::AP_password.c_str(), cpWifiChannel);
+#ifdef ESP8266
+          if(ok) {
+            startCaptiveDns();
+          } else {
+            stopCaptiveDns();
+          }
+#endif
+          return ok;
+        }
+
+        void stopAccessPoint() {
+#ifdef ESP8266
+          stopCaptiveDns();
+#endif
+          WiFi.softAPdisconnect();
+        }
+
 
 
         void resetClientWifi() {
@@ -291,14 +366,14 @@ namespace RFLink { namespace Wifi {
             WiFi.hostname(params::client_hostname);
             #endif
             Serial.printf_P(PSTR("* WIFI AP starting with SSID '%s' and band=%i... "), params::AP_ssid.c_str(), cpWifiChannel);
-            if( !WiFi.softAP(params::AP_ssid.c_str(), params::AP_password.c_str()))
+            if( !startAccessPoint())
               Serial.println(F("FAILED"));
             else
               Serial.println(F("OK"));
           }
           else {
             // just in case it
-            WiFi.softAPdisconnect();
+            stopAccessPoint();
           }
 
           if(params::client_enabled) {
@@ -309,6 +384,9 @@ namespace RFLink { namespace Wifi {
 
         void stop_WIFI()
         {
+#ifdef ESP8266
+          stopCaptiveDns();
+#endif
           WiFi.disconnect();
           WiFi.mode(WIFI_OFF);
           delay(500);
@@ -491,28 +569,16 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
 #endif // ESP
 
           start_WIFI();
-
-#ifdef RFLINK_OTA_ENABLED
-          #ifdef RFLINK_OTA_PASSWORD
-  ArduinoOTA.setPassword(RFLINK_OTA_PASSWORD);
-#endif
-
-  // we must stop the Receiver from interrupting the OTA process
-  ArduinoOTA.onStart([]() {
-    Serial.println("20;XX;DEBUG;MSG=OTA requested, turning off Receiver");
-    AsyncSignalScanner::stopScanning();
-  });
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.print(F("20;XX;DEBUG;MSG=OTA failed with error code #"));
-    Serial.print(error);
-    Serial.println(" ,turning on Receiver");
-    AsyncSignalScanner::startScanning();
-  });
-  ArduinoOTA.begin();
-#endif // RFLINK_OTA_ENABLED
         }
 
         void mainLoop() {
+#ifdef ESP8266
+          if(captiveDnsStarted) {
+            captiveDnsServer.processNextRequest();
+          } else if(params::AP_enabled && WiFi.softAPIP() != IPAddress(0, 0, 0, 0) && (captiveDnsLastRetry == 0 || millis() - captiveDnsLastRetry > 3000)) {
+            startCaptiveDns();
+          }
+#endif
 
           if(!ntp::synchronized && WiFi.isConnected()) {
             time_t now;
@@ -544,12 +610,13 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
               if(!isEnabled)
                 WiFi.enableAP(true);
 
-              if( !WiFi.softAP(params::AP_ssid.c_str(), params::AP_password.c_str()), cpWifiChannel )
+              if( !startAccessPoint() )
                 Serial.println("WIFI AP start FAILED");
               else
                 Serial.println("WIFI AP started");
             } else {
               Serial.println("Shutting down AP");
+              stopAccessPoint();
               WiFi.enableAP(false);
             }
             #endif
@@ -557,12 +624,13 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
             if(params::AP_enabled) {
                 Serial.printf_P(PSTR("* WIFI AP starting with SSID '%s'... "), params::AP_ssid.c_str());
                 WiFi.enableAP(true);
-                if( !WiFi.softAP(params::AP_ssid.c_str(), params::AP_password.c_str()), cpWifiChannel )
+                if( !startAccessPoint() )
                   Serial.println(F("WIFI AP start FAILED"));
                 else
                   Serial.println(F("WIFI AP started"));
             } else {
               Serial.println(F("Shutting down AP"));
+              stopAccessPoint();
               WiFi.enableAP(false);
             }
             #endif
@@ -572,11 +640,6 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
             clientParamsHaveChanged = 0;
             resetClientWifi();
           }
-
-
-#if defined(RFLINK_OTA_ENABLED)
-          ArduinoOTA.handle();
-#endif
 
         } // end of mainLoop()
 
@@ -600,8 +663,9 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
               wifi_client[F("ip")] = WiFi.localIP().toString();
               wifi_client[F("netmask")] = WiFi.subnetMask().toString();
               wifi_client[F("dns")] = WiFi.dnsIP().toString();
+              wifi_client[F("hostname")] = params::client_hostname;
             } else {
-              wifi_ap[F("status")] = F("disconnected");
+              wifi_client[F("status")] = F("disconnected");
             }
           } else {
             wifi_client[F("status")] = F("disabled");

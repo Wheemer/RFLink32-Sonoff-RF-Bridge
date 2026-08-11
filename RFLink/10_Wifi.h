@@ -36,9 +36,6 @@ namespace RFLink {
         void getStatusJsonString(JsonObject &output);
     }
 
-    namespace AutoOTA {
-        void checkForUpdateAndApply();
-    }
 }
 
 #endif //_10_WiFi_H

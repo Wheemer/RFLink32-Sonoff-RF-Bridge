@@ -75,7 +75,7 @@ namespace RFLink
     const char json_name_slicer[] = "slicer";
 
     Config::ConfigItem configItems[] = {
-            Config::ConfigItem(json_name_async_mode_enabled, Config::SectionId::Signal_id, false, paramsUpdatedCallback),
+            Config::ConfigItem(json_name_async_mode_enabled, Config::SectionId::Signal_id, true, paramsUpdatedCallback),
             Config::ConfigItem(json_name_sample_rate, Config::SectionId::Signal_id, DEFAULT_RAWSIGNAL_SAMPLE_RATE, paramsUpdatedCallback),
             Config::ConfigItem(json_name_min_raw_pulses, Config::SectionId::Signal_id, MIN_RAW_PULSES, paramsUpdatedCallback),
             Config::ConfigItem(json_name_seek_timeout, Config::SectionId::Signal_id, SIGNAL_SEEK_TIMEOUT_MS, paramsUpdatedCallback),

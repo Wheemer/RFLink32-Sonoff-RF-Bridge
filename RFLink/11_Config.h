@@ -22,7 +22,6 @@ namespace RFLink
         enum SectionId
         { // WARNING!!! any change here must be reflected in jsonSections variable in Config.cpp
             Wifi_id,
-            OTA_id,
             Core_id,
             MQTT_id,
             Portal_id,

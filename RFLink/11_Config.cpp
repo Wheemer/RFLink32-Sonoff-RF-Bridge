@@ -35,7 +35,6 @@ namespace RFLink
 
     const char *jsonSections[] = {
             "wifi",
-            "ota",
             "core",
             "mqtt",
             "portal",
@@ -648,8 +647,7 @@ namespace RFLink
 
     void dumpConfigToString(String &destination)
     {
-      //serializeJson(doc, destination);
-      serializeJsonPretty(doc, destination);
+      serializeJson(doc, destination);
     }
 
     void dumpConfigToSerial()

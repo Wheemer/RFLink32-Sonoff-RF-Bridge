@@ -30,7 +30,6 @@
 #include "10_Wifi.h"
 #include "11_Config.h"
 #include "12_Portal.h"
-#include "13_OTA.h"
 
 #if (defined(__AVR_ATmega328P__) || defined(__AVR_ATmega2560__))
 #include <avr/power.h>
@@ -59,11 +58,15 @@ namespace RFLink {
     struct timeval scheduledRebootTime;
     char printBuf[300];
 
+#ifndef RFLINK_SERIAL_RX_BUFFER_SIZE
+#define RFLINK_SERIAL_RX_BUFFER_SIZE 512
+#endif
+
     void setup() {
 
       delay(250);         // Time needed to switch back from Upload to Console
 
-      Serial.setRxBufferSize(512);
+      Serial.setRxBufferSize(RFLINK_SERIAL_RX_BUFFER_SIZE);
       Serial.setTimeout(1);
 
       Serial.begin(BAUD); // Initialise the serial port
@@ -180,7 +183,6 @@ namespace RFLink {
       }
 
       Radio::mainLoop();
-      OTA::mainLoop();
     }
 
     void sendMsgFromBuffer() {
@@ -461,6 +463,7 @@ namespace RFLink {
 
       sprintf_P(buffer, PSTR("RFLink_ESP_%d.%d-%s"), BUILDNR, REVNR, PSTR(RFLINK_BUILDNAME));
       output["sw_version"] = buffer;
+      output["hardware"] = F(RFLINK_HARDWARE_NAME);
     }
 
 }

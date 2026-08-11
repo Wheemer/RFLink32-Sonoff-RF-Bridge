@@ -19,12 +19,15 @@
 #define RFLINK_BUILDNAME "unknown"
 #endif
 
+#ifndef RFLINK_HARDWARE_NAME
+#define RFLINK_HARDWARE_NAME "Generic RFLink"
+#endif
+
 #ifndef DEFAULT_WIFI_CLIENT_HOSTNAME
 #define DEFAULT_WIFI_CLIENT_HOSTNAME "RFLink32"
 #endif
 
 #define SERIAL_ENABLED // Send RFLink messages over Serial
-//#define RFLINK_AUTOOTA_ENABLED // if you want to the device to self-update at boot from a given URKL
                           // dont forget to set the URL in Crendentials.h
 
 //#define RFLINK_MQTT_DISABLED    // to disable MQTT entirely (not compiled at all)

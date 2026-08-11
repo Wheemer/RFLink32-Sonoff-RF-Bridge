@@ -47,6 +47,10 @@ BearSSL::X509List *sslTrustedAnchors  = nullptr;
 #include <PubSubClient.h>
 boolean bResub; // uplink reSubscribe after setup only
 
+#ifndef RFLINK_MQTT_BUFFER_SIZE
+#define RFLINK_MQTT_BUFFER_SIZE 1024
+#endif
+
 // Update these with values suitable for your network.
 
 namespace RFLink { namespace Mqtt {
@@ -228,6 +232,7 @@ void setup_MQTT()
   refreshParametersFromConfig(false);
 
   MQTTClient.setKeepAlive(MQTT_KEEPALIVE);
+  MQTTClient.setBufferSize(RFLINK_MQTT_BUFFER_SIZE);
 
   if (params::port == 0)
     params::port = 1883;
