@@ -338,6 +338,17 @@ void publishMsg()
   MQTTClient.publish(params::topic_out.c_str(), pbuffer, MQTT_RETAINED);
 }
 
+void publishRawMsg(const char *message)
+{
+  if(!params::enabled || message == nullptr || message[0] == 0)
+    return;
+
+  if(!MQTTClient.connected())
+    return;
+
+  MQTTClient.publish(params::topic_out.c_str(), message, false);
+}
+
 void checkMQTTloop()
 {
   if(!RFLink::Wifi::clientNetworkIsUp()) return;

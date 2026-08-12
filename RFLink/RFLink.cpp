@@ -62,6 +62,76 @@ namespace RFLink {
 #define RFLINK_SERIAL_RX_BUFFER_SIZE 512
 #endif
 
+#ifndef RFLINK_RAW_MQTT_BUFFER_SIZE
+#define RFLINK_RAW_MQTT_BUFFER_SIZE 1500
+#endif
+
+    namespace {
+      char rawMqttBuffer[RFLINK_RAW_MQTT_BUFFER_SIZE];
+      size_t rawMqttBufferLength = 0;
+
+      void publishRawMqttBuffer()
+      {
+#ifndef RFLINK_MQTT_DISABLED
+        if (rawMqttBufferLength == 0)
+          return;
+
+        rawMqttBuffer[rawMqttBufferLength] = 0;
+        RFLink::Mqtt::publishRawMsg(rawMqttBuffer);
+        rawMqttBufferLength = 0;
+        rawMqttBuffer[0] = 0;
+#endif
+      }
+
+      void appendRawMqttChar(char c)
+      {
+#ifndef RFLINK_MQTT_DISABLED
+        if (c == '\r')
+          return;
+
+        if (c == '\n') {
+          publishRawMqttBuffer();
+          return;
+        }
+
+        if (rawMqttBufferLength >= sizeof(rawMqttBuffer) - 1)
+          publishRawMqttBuffer();
+
+        rawMqttBuffer[rawMqttBufferLength++] = c;
+#endif
+      }
+
+      void appendRawMqttText(const char *buf, bool end_of_line = false)
+      {
+#ifndef RFLINK_MQTT_DISABLED
+        if (buf == nullptr)
+          return;
+
+        while (*buf != 0)
+          appendRawMqttChar(*buf++);
+
+        if (end_of_line)
+          publishRawMqttBuffer();
+#endif
+      }
+
+      void appendRawMqttFlashText(const __FlashStringHelper *buf, bool end_of_line = false)
+      {
+#ifndef RFLINK_MQTT_DISABLED
+        if (buf == nullptr)
+          return;
+
+        PGM_P cursor = reinterpret_cast<PGM_P>(buf);
+        char c;
+        while ((c = pgm_read_byte(cursor++)) != 0)
+          appendRawMqttChar(c);
+
+        if (end_of_line)
+          publishRawMqttBuffer();
+#endif
+      }
+    }
+
     void setup() {
 
       delay(250);         // Time needed to switch back from Upload to Console
@@ -223,6 +293,8 @@ namespace RFLink {
           RFLink::Serial2Net::broadcastMessage(F("\r\n"));
 #endif // !RFLINK_SERIAL2NET_DISABLED
 
+        appendRawMqttText(buf, end_of_line);
+
       }
     }
 
@@ -234,6 +306,9 @@ namespace RFLink {
 #ifndef RFLINK_SERIAL2NET_DISABLED
       RFLink::Serial2Net::broadcastMessage(String(n).c_str());
 #endif // !RFLINK_SERIAL2NET_DISABLED
+      char numberBuf[16];
+      ltoa(n, numberBuf, 10);
+      appendRawMqttText(numberBuf);
     }
 
     void sendRawPrint(unsigned long n)
@@ -244,6 +319,9 @@ namespace RFLink {
 #ifndef RFLINK_SERIAL2NET_DISABLED
       RFLink::Serial2Net::broadcastMessage(String(n).c_str());
 #endif // !RFLINK_SERIAL2NET_DISABLED
+      char numberBuf[16];
+      ultoa(n, numberBuf, 10);
+      appendRawMqttText(numberBuf);
     }
 
     void sendRawPrint(int n)
@@ -254,6 +332,9 @@ namespace RFLink {
 #ifndef RFLINK_SERIAL2NET_DISABLED
       RFLink::Serial2Net::broadcastMessage(String(n).c_str());
 #endif // !RFLINK_SERIAL2NET_DISABLED
+      char numberBuf[16];
+      itoa(n, numberBuf, 10);
+      appendRawMqttText(numberBuf);
     }
 
     void sendRawPrint(unsigned int n)
@@ -264,6 +345,9 @@ namespace RFLink {
 #ifndef RFLINK_SERIAL2NET_DISABLED
       RFLink::Serial2Net::broadcastMessage(String(n).c_str());
 #endif // !RFLINK_SERIAL2NET_DISABLED
+      char numberBuf[16];
+      utoa(n, numberBuf, 10);
+      appendRawMqttText(numberBuf);
     }
 
   void sendRawPrint(float f)
@@ -274,6 +358,9 @@ namespace RFLink {
 #ifndef RFLINK_SERIAL2NET_DISABLED
     RFLink::Serial2Net::broadcastMessage(String(f).c_str());
 #endif // !RFLINK_SERIAL2NET_DISABLED
+    char numberBuf[24];
+    dtostrf(f, 0, 2, numberBuf);
+    appendRawMqttText(numberBuf);
   }
 
     void sendRawPrint(char c)
@@ -284,6 +371,7 @@ namespace RFLink {
 #ifndef RFLINK_SERIAL2NET_DISABLED
       RFLink::Serial2Net::broadcastMessage(c);
 #endif // !RFLINK_SERIAL2NET_DISABLED
+      appendRawMqttChar(c);
     }
 
     void sendRawPrint(const __FlashStringHelper *buf, bool end_of_line){
@@ -297,6 +385,7 @@ namespace RFLink {
       if(end_of_line)
         RFLink::Serial2Net::broadcastMessage(F("\r\n"));
       #endif // !RFLINK_SERIAL2NET_DISABLED
+      appendRawMqttFlashText(buf, end_of_line);
     };
 
     /**

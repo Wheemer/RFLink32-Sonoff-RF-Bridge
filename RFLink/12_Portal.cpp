@@ -568,7 +568,7 @@ namespace RFLink { namespace Portal {
           JsonObject root = input.to<JsonObject>();
           JsonObject wifi = root.createNestedObject(F("wifi"));
           wifi[F("client_enabled")] = formBool(request, F("client_enabled"));
-          wifi[F("client_dhcp_enabled")] = request->hasParam(F("client_dhcp_enabled"), true) ? formBool(request, F("client_dhcp_enabled")) : cfgBool("client_dhcp_enabled", Config::SectionId::Wifi_id);
+          wifi[F("client_dhcp_enabled")] = formBool(request, F("client_dhcp_enabled"));
           wifi[F("client_ssid")] = ssid;
           wifi[F("client_password")] = password;
           wifi[F("client_ip")] = request->hasParam(F("client_ip"), true) ? formString(request, F("client_ip")) : cfgString("client_ip", Config::SectionId::Wifi_id);
@@ -576,7 +576,7 @@ namespace RFLink { namespace Portal {
           wifi[F("client_gateway")] = request->hasParam(F("client_gateway"), true) ? formString(request, F("client_gateway")) : cfgString("client_gateway", Config::SectionId::Wifi_id);
           wifi[F("client_dns")] = request->hasParam(F("client_dns"), true) ? formString(request, F("client_dns")) : cfgString("client_dns", Config::SectionId::Wifi_id);
           wifi[F("client_hostname")] = request->hasParam(F("client_hostname"), true) ? formString(request, F("client_hostname")) : cfgString("client_hostname", Config::SectionId::Wifi_id);
-          wifi[F("ap_enabled")] = request->hasParam(F("ap_enabled"), true) ? formBool(request, F("ap_enabled")) : cfgBool("ap_enabled", Config::SectionId::Wifi_id);
+          wifi[F("ap_enabled")] = formBool(request, F("ap_enabled"));
           wifi[F("ap_ssid")] = request->hasParam(F("ap_ssid"), true) ? formString(request, F("ap_ssid")) : cfgString("ap_ssid", Config::SectionId::Wifi_id);
           wifi[F("ap_password")] = request->hasParam(F("ap_password"), true) ? formString(request, F("ap_password")) : cfgString("ap_password", Config::SectionId::Wifi_id);
           wifi[F("ap_ip")] = request->hasParam(F("ap_ip"), true) ? formString(request, F("ap_ip")) : cfgString("ap_ip", Config::SectionId::Wifi_id);

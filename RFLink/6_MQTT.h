@@ -68,6 +68,7 @@ namespace RFLink { namespace Mqtt {
 void setup_MQTT();
 void reconnect(int retryCount=-1, bool force=false);
 void publishMsg();
+void publishRawMsg(const char *message);
 void checkMQTTloop();
 
 void paramsUpdatedCallback();

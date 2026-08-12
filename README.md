@@ -18,6 +18,8 @@ over serial, MQTT, or Serial2Net.
 - Defaults Serial2Net and async signal mode on.
 - Provides a lighter embedded web UI that fits the constrained device better.
 - Adds captive-portal handling for first setup from the device AP.
+- Publishes raw RF debug/capture output over MQTT as well as Serial2Net/serial.
+- Fixes Wi-Fi form handling so disabled checkboxes, including AP enable, persist.
 - Reports the hardware profile as `RFLink32 - Sonoff RF Bridge`.
 
 ## What This Build Does Not Include
@@ -86,6 +88,8 @@ Default web credentials are inherited from RFLink32:
 
 This build keeps the RFLink32 command protocol and increases the transport
 buffers so long raw RF payloads can survive MQTT, Serial2Net, and serial RX.
+It also routes `RFDEBUG` and `RFUDEBUG` raw receive output to the configured
+MQTT output topic, so MQTT-only installs can capture raw waveforms.
 
 That matters for commands shaped like:
 
