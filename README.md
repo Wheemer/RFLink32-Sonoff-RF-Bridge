@@ -15,7 +15,7 @@ over MQTT.
 - Defaults the `sonoff_bridge` environment for the ESP8285 Sonoff RF Bridge.
 - Uses hardcoded RF Bridge radio pins to save space.
 - Defaults async signal mode on.
-- Provides a lighter embedded web UI that fits the constrained device better.
+- Provides a minimal embedded setup UI for Wi-Fi and MQTT only.
 - Adds captive-portal handling for first setup from the device AP.
 - Publishes raw RF debug/capture output over MQTT.
 - Fixes Wi-Fi form handling so disabled checkboxes, including AP enable, persist.
@@ -45,7 +45,7 @@ The latest built firmware is published on the GitHub releases page:
 
 The current local build artifact is:
 
-`sonoff_bridge-rflink32-mqtt-auto-discovery-no-serial2net.bin`
+`sonoff_bridge-rflink32-mqtt-setup-only-no-serial2net.bin`
 
 ## Build
 
@@ -80,8 +80,8 @@ The build flags for this target include:
 Flash by serial using your preferred ESP8266/ESP8285 flashing tool. The release
 asset is a normal ESP8266 firmware image for the Sonoff RF Bridge target.
 
-After flashing, connect to the device AP and configure Wi-Fi from the embedded
-web UI.
+After flashing, connect to the device AP and configure Wi-Fi plus MQTT from the
+embedded setup UI.
 
 Default web credentials are inherited from RFLink32:
 
@@ -121,9 +121,10 @@ fit while a long raw RF payload is still truncated on a stock-sized buffer.
 ## Web UI
 
 The web UI in this fork is intentionally lightweight. It keeps the useful
-configuration surfaces for this build and removes pages that do not apply to the
-Sonoff RF Bridge target, such as firmware upload and unsupported radio/plugin
-configuration.
+setup surfaces for this build and removes normal user-facing pages that do not
+apply after Home Assistant discovery, such as firmware upload, signal tuning,
+advanced JSON editing, and unsupported radio/plugin configuration. The HTTP API
+remains available for integration/bootstrap and recovery tooling.
 
 ## Upstream
 
