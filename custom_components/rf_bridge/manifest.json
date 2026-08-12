@@ -1,0 +1,13 @@
+{
+  "domain": "rf_bridge",
+  "name": "RF Bridge",
+  "codeowners": [],
+  "config_flow": true,
+  "documentation": "https://github.com/Wheemer/RFLink32-Sonoff-RF-Bridge",
+  "zeroconf": ["_rfbridge._tcp.local."],
+  "integration_type": "hub",
+  "iot_class": "local_poll",
+  "quality_scale": "bronze",
+  "requirements": [],
+  "version": "0.5.0"
+}

@@ -17,6 +17,8 @@ namespace RFLink {
         void init();
         void start();
         void stop();
+        void startSetupServer();
+        void stopSetupServer();
 
         void paramsUpdatedCallback();
         void refreshParametersFromConfig(bool triggerChanges=true);

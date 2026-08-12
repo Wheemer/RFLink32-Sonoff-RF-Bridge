@@ -1,0 +1,47 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "RF Bridge",
+        "description": "Configure a local RF Bridge and optional command library. Commands must be JSON: {\"key\": {\"name\": \"Name\", \"command\": \"10;signal;sendRF;...\", \"icon\": \"mdi:remote\"}}.",
+        "data": {
+          "host": "Bridge host",
+          "api_port": "Bridge API port",
+          "commands": "Command library JSON"
+        }
+      },
+      "zeroconf_confirm": {
+        "title": "RF Bridge",
+        "description": "Do you want to add {name}?"
+      }
+    },
+    "error": {
+      "invalid_commands": "The command library JSON is invalid.",
+      "cannot_connect": "Could not connect to the RF Bridge."
+    },
+    "abort": {
+      "already_configured": "This RF Bridge is already configured.",
+      "invalid_discovery": "The RF Bridge discovery data is invalid."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "RF Bridge options",
+        "description": "Edit the command library JSON.",
+        "data": {
+          "commands": "Command library JSON"
+        }
+      }
+    },
+    "error": {
+      "invalid_commands": "The command library JSON is invalid."
+    }
+  },
+  "exceptions": {
+    "unknown_command": {
+      "message": "Unknown RFLink32 command key: {command_key}"
+    }
+  }
+}

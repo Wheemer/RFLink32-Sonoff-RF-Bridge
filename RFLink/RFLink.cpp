@@ -65,13 +65,66 @@ namespace RFLink {
 #define RFLINK_RAW_MQTT_BUFFER_SIZE 1500
 #endif
 
+#ifndef RFLINK_RF_EVENT_QUEUE_SIZE
+#define RFLINK_RF_EVENT_QUEUE_SIZE 4
+#endif
+
+#ifndef RFLINK_RF_EVENT_MESSAGE_SIZE
+#define RFLINK_RF_EVENT_MESSAGE_SIZE 220
+#endif
+
+#ifndef RFLINK_RF_EVENT_COMMAND_SIZE
+#define RFLINK_RF_EVENT_COMMAND_SIZE 1500
+#endif
+
     namespace {
+      struct RfEventRecord {
+        uint32_t sequence = 0;
+        unsigned long millis = 0;
+        char message[RFLINK_RF_EVENT_MESSAGE_SIZE] = {0};
+        char command[RFLINK_RF_EVENT_COMMAND_SIZE] = {0};
+        bool raw = false;
+        int pulseCount = 0;
+        int rssi = 0;
+        bool truncated = false;
+      };
+
+      RfEventRecord rfEventQueue[RFLINK_RF_EVENT_QUEUE_SIZE];
+      uint32_t rfEventSequence = 0;
+      uint8_t rfEventWriteIndex = 0;
+
+      bool isRfEventMessage(const char *message)
+      {
+        return message != nullptr && strncmp(message, "20;", 3) == 0;
+      }
+
+      void recordRfEvent(const char *message)
+      {
+        if(!isRfEventMessage(message))
+          return;
+
+        RfEventRecord &record = rfEventQueue[rfEventWriteIndex];
+        record.sequence = ++rfEventSequence;
+        record.millis = millis();
+        strncpy(record.message, message, sizeof(record.message) - 1);
+        record.message[sizeof(record.message) - 1] = 0;
+        record.command[0] = 0;
+        record.raw = false;
+        record.pulseCount = 0;
+        record.rssi = 0;
+        record.truncated = false;
+
+        rfEventWriteIndex++;
+        if(rfEventWriteIndex >= RFLINK_RF_EVENT_QUEUE_SIZE)
+          rfEventWriteIndex = 0;
+      }
+
+#ifndef RFLINK_MQTT_DISABLED
       char rawMqttBuffer[RFLINK_RAW_MQTT_BUFFER_SIZE];
       size_t rawMqttBufferLength = 0;
 
       void publishRawMqttBuffer()
       {
-#ifndef RFLINK_MQTT_DISABLED
         if (rawMqttBufferLength == 0)
           return;
 
@@ -79,12 +132,10 @@ namespace RFLink {
         RFLink::Mqtt::publishRawMsg(rawMqttBuffer);
         rawMqttBufferLength = 0;
         rawMqttBuffer[0] = 0;
-#endif
       }
 
       void appendRawMqttChar(char c)
       {
-#ifndef RFLINK_MQTT_DISABLED
         if (c == '\r')
           return;
 
@@ -97,12 +148,10 @@ namespace RFLink {
           publishRawMqttBuffer();
 
         rawMqttBuffer[rawMqttBufferLength++] = c;
-#endif
       }
 
       void appendRawMqttText(const char *buf, bool end_of_line = false)
       {
-#ifndef RFLINK_MQTT_DISABLED
         if (buf == nullptr)
           return;
 
@@ -111,12 +160,10 @@ namespace RFLink {
 
         if (end_of_line)
           publishRawMqttBuffer();
-#endif
       }
 
       void appendRawMqttFlashText(const __FlashStringHelper *buf, bool end_of_line = false)
       {
-#ifndef RFLINK_MQTT_DISABLED
         if (buf == nullptr)
           return;
 
@@ -127,8 +174,12 @@ namespace RFLink {
 
         if (end_of_line)
           publishRawMqttBuffer();
-#endif
       }
+#else
+      void appendRawMqttChar(char) {}
+      void appendRawMqttText(const char *, bool = false) {}
+      void appendRawMqttFlashText(const __FlashStringHelper *, bool = false) {}
+#endif
     }
 
     void setup() {
@@ -248,6 +299,7 @@ namespace RFLink {
 
     void sendMsgFromBuffer() {
       if (pbuffer[0] != 0) {
+        recordRfEvent(pbuffer);
 
 #ifdef SERIAL_ENABLED
         Serial.print(pbuffer);
@@ -262,6 +314,116 @@ namespace RFLink {
 #endif
 
         pbuffer[0] = 0;
+      }
+    }
+
+    uint32_t getRfEventCursor() {
+      return rfEventSequence;
+    }
+
+    void recordRawRfEvent(
+      int number,
+      byte repeat,
+      byte delay,
+      byte multiply,
+      unsigned long time,
+      float rssi,
+      const uint16_t *pulses
+    ) {
+      if(number <= 0 || pulses == nullptr)
+        return;
+
+      RfEventRecord &record = rfEventQueue[rfEventWriteIndex];
+      record.sequence = ++rfEventSequence;
+      record.millis = millis();
+      record.raw = true;
+      record.pulseCount = number;
+      record.rssi = (int) rssi;
+      record.truncated = false;
+      snprintf_P(
+        record.message,
+        sizeof(record.message),
+        PSTR("20;XX;RAW;Pulses=%i;RSSI=%i;"),
+        number,
+        (int) rssi
+      );
+
+      size_t offset = snprintf_P(
+        record.command,
+        sizeof(record.command),
+        PSTR("10;signal;sendRF;{\"repeat\":%u,\"delay\":%u,\"multiply\":%u,\"pulses\":["),
+        repeat == 0 ? 8 : repeat,
+        delay == 0 ? 100 : delay,
+        multiply == 0 ? 1 : multiply
+      );
+
+      for(int index = 1; index <= number; index++) {
+        int written = snprintf_P(
+          record.command + offset,
+          sizeof(record.command) - offset,
+          index == 1 ? PSTR("%u") : PSTR(",%u"),
+          pulses[index]
+        );
+        if(written < 0 || offset + (size_t) written >= sizeof(record.command) - 3) {
+          record.truncated = true;
+          break;
+        }
+        offset += written;
+      }
+
+      if(record.truncated) {
+        record.command[0] = 0;
+      } else if(offset < sizeof(record.command) - 3) {
+        record.command[offset++] = ']';
+        record.command[offset++] = '}';
+        record.command[offset] = 0;
+      } else {
+        record.command[0] = 0;
+        record.truncated = true;
+      }
+
+      rfEventWriteIndex++;
+      if(rfEventWriteIndex >= RFLINK_RF_EVENT_QUEUE_SIZE)
+        rfEventWriteIndex = 0;
+    }
+
+    void appendRfEventsJson(JsonArray output, uint32_t since, uint8_t limit) {
+      if(limit == 0 || limit > RFLINK_RF_EVENT_QUEUE_SIZE)
+        limit = RFLINK_RF_EVENT_QUEUE_SIZE;
+
+      uint32_t firstSequence = since + 1;
+      uint32_t queueStart = 0;
+      if(rfEventSequence >= RFLINK_RF_EVENT_QUEUE_SIZE)
+        queueStart = rfEventSequence - RFLINK_RF_EVENT_QUEUE_SIZE + 1;
+      if(firstSequence < queueStart)
+        firstSequence = queueStart;
+
+      if(rfEventSequence >= limit && firstSequence < rfEventSequence - limit + 1)
+        firstSequence = rfEventSequence - limit + 1;
+
+      for(uint32_t sequence = firstSequence; sequence <= rfEventSequence; sequence++) {
+        RfEventRecord *record = nullptr;
+        for(uint8_t index = 0; index < RFLINK_RF_EVENT_QUEUE_SIZE; index++) {
+          if(rfEventQueue[index].sequence == sequence) {
+            record = &rfEventQueue[index];
+            break;
+          }
+        }
+        if(record == nullptr)
+          continue;
+
+        JsonObject event = output.createNestedObject();
+        event[F("sequence")] = record->sequence;
+        event[F("millis")] = record->millis;
+        event[F("message")] = record->message;
+        if(record->raw) {
+          event[F("raw")] = true;
+          event[F("pulse_count")] = record->pulseCount;
+          event[F("rssi")] = record->rssi;
+          event[F("truncated")] = record->truncated;
+          if(record->command[0] != 0)
+            event[F("command")] = record->command;
+        }
       }
     }
 
@@ -349,6 +511,7 @@ namespace RFLink {
     */
     bool executeCliCommand(char *cmd) {
       static byte ValidCommand = 0;
+      bool commandAccepted = false;
 
       // Copy input command to InputBuffer_Serial, because many plugins are based on it !
       if(cmd != InputBuffer_Serial) { // sometimes we already have the command in the right buffer
@@ -365,11 +528,13 @@ namespace RFLink {
             display_Header();
             display_Name(PSTR("PONG"));
             display_Footer();
+            commandAccepted = true;
           } else if (strncasecmp(cmd + 3, "REBOOT;", 7) == 0) {
             display_Header();
             display_Name(PSTR("REBOOT"));
             display_Footer();
             CallReboot();
+            commandAccepted = true;
           } else if (strncasecmp(cmd + 3, "RFDEBUG=O", 9) == 0) {
             if (cmd[12] == 'N' || cmd[12] == 'n') {
               RFDebug = true;    // full debug on
@@ -385,6 +550,7 @@ namespace RFLink {
               display_Name(PSTR("RFDEBUG=OFF"));
               display_Footer();
             }
+            commandAccepted = true;
           } else if (strncasecmp(cmd + 3, "RFUDEBUG=O", 10) == 0) {
             if (cmd[13] == 'N' || cmd[13] == 'n') {
               RFDebug = false;   // full debug off
@@ -400,6 +566,7 @@ namespace RFLink {
               display_Name(PSTR("RFUDEBUG=OFF"));
               display_Footer();
             }
+            commandAccepted = true;
           } else if (strncasecmp(cmd + 3, "QRFDEBUG=O", 10) == 0) {
             if (cmd[13] == 'N' || cmd[13] == 'n') {
               RFDebug = false;   // full debug off
@@ -415,6 +582,7 @@ namespace RFLink {
               display_Name(PSTR("QRFDEBUG=OFF"));
               display_Footer();
             }
+            commandAccepted = true;
           } else if (strncasecmp(cmd + 3, "QRFUDEBUG=O", 11) == 0) {
             if (cmd[14] == 'N' || cmd[14] == 'n') {
               RFDebug = false;  // full debug off
@@ -430,14 +598,17 @@ namespace RFLink {
               display_Name(PSTR("QRFUDEBUG=OFF"));
               display_Footer();
             }
+            commandAccepted = true;
           } else if (strncasecmp(cmd + 3, "VERSION", 7) == 0) {
             display_Header();
             display_Splash();
             display_Footer();
+            commandAccepted = true;
           } else if (strncasecmp(cmd + 3, "signal", 6) == 0) {
-            Signal::executeCliCommand(cmd + 3 + 6 + 1);
+            commandAccepted = Signal::executeCliCommand(cmd + 3 + 6 + 1);
           } else if (strncasecmp(cmd + 3, "config", 6) == 0) {
             Config::executeCliCommand(cmd + 3 + 6 + 1);
+            commandAccepted = true;
           } else {
             // -------------------------------------------------------
             // Handle Generic Commands / Translate protocol data into Nodo text commands
@@ -453,6 +624,7 @@ namespace RFLink {
                 ValidCommand = 1;
               else // Answer that an invalid command was received?
                 ValidCommand = 2;
+              commandAccepted = ValidCommand == 1;
 
               Radio::set_Radio_mode(Radio::Radio_RX);
             }
@@ -470,7 +642,7 @@ namespace RFLink {
       ValidCommand = 0;
       sendMsgFromBuffer(); // in case there is a response waiting to be sent
       resetSerialBuffer();
-      return true;
+      return commandAccepted;
     }
 
     void scheduleReboot(unsigned int seconds) {
@@ -507,9 +679,10 @@ namespace RFLink {
       output["free_block_max_size"] = ESP.getMaxFreeBlockSize();
 #endif
 
-      sprintf_P(buffer, PSTR("RFLink_ESP_%d.%d-%s"), BUILDNR, REVNR, PSTR(RFLINK_BUILDNAME));
+      sprintf_P(buffer, PSTR("RF Bridge Local API %d.%d"), BUILDNR, REVNR);
       output["sw_version"] = buffer;
       output["hardware"] = F(RFLINK_HARDWARE_NAME);
+      output["rf_event_cursor"] = getRfEventCursor();
     }
 
 }

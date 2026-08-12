@@ -23,6 +23,10 @@
 #define RFLINK_HARDWARE_NAME "Generic RFLink"
 #endif
 
+#ifndef RFLINK_API_PORT
+#define RFLINK_API_PORT 8080
+#endif
+
 #ifndef DEFAULT_WIFI_CLIENT_HOSTNAME
 #define DEFAULT_WIFI_CLIENT_HOSTNAME "RFLink32"
 #endif
@@ -105,6 +109,17 @@ namespace RFLink {
     //void sendRawPrintf_P(PGM_P, ...);
 
     void getStatusJsonString(JsonObject &output);
+    void recordRawRfEvent(
+      int number,
+      byte repeat,
+      byte delay,
+      byte multiply,
+      unsigned long time,
+      float rssi,
+      const uint16_t *pulses
+    );
+    uint32_t getRfEventCursor();
+    void appendRfEventsJson(JsonArray output, uint32_t since, uint8_t limit);
 
     void scheduleReboot(unsigned int seconds);
 }

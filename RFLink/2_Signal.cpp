@@ -624,6 +624,15 @@ namespace RFLink
               //  sprintf(&pbuffer[responseLength-2], "RSSI=%i;\r\n", (int)RawSignal.rssi);
               return true;
             }
+            RFLink::recordRawRfEvent(
+              RawSignal.Number,
+              RawSignal.Repeats,
+              RawSignal.Delay,
+              RawSignal.Multiply,
+              RawSignal.Time,
+              RawSignal.rssi,
+              RawSignal.Pulses
+            );
           }
         } // while
         return false;
@@ -652,6 +661,16 @@ namespace RFLink
       { // Check all plugins to see which plugin can handle the received signal.
         counters::successfullyDecodedSignalsCount++;
         RepeatingTimer = millis() + params::signal_repeat_time;
+      } else {
+        RFLink::recordRawRfEvent(
+          RawSignal.Number,
+          RawSignal.Repeats,
+          RawSignal.Delay,
+          RawSignal.Multiply,
+          RawSignal.Time,
+          RawSignal.rssi,
+          RawSignal.Pulses
+        );
       }
       AsyncSignalScanner::startScanning();
       return (signalWasDecoded != 0);
@@ -1010,7 +1029,7 @@ namespace RFLink
 
     }
 
-    void executeCliCommand(char *cmd)
+    bool executeCliCommand(char *cmd)
     {
       static const char error_command_aborted[] PROGMEM = "An error occurred, invalid signal was given. Command aborted!";
 
@@ -1021,7 +1040,7 @@ namespace RFLink
       if (commaIndex == nullptr)
       {
         Serial.println(F("Error : failed to find ending ';' for the command"));
-        return;
+        return false;
       }
 
       int commandSize = commaIndex - cmd;
@@ -1032,12 +1051,14 @@ namespace RFLink
       {
         if(!getSignalFromJson(signal, commaIndex + 1)) {
           RFLink::sendRawPrint(FPSTR(error_command_aborted), true);
-          return;
+          return false;
         }
 
         Serial.printf_P(PSTR("** sending RF signal with the following properties: pulses=%i, repeat=%i, delay=%i, multiply=%i... "), signal.Number, signal.Repeats, signal.Delay, signal.Multiply);
         RawSendRF(&signal);
         Serial.println(F("done"));
+        RawSignal.readyForDecoder = false;
+        return true;
       }
       else if (strncasecmp_P(cmd, commands::testRF, commandSize) == 0)
       {
@@ -1046,7 +1067,7 @@ namespace RFLink
         if(!getSignalFromJson(RawSignal, commaIndex+1)) {
           Serial.println(FPSTR(error_command_aborted));
           RawSignal.readyForDecoder = false;
-          return;
+          return false;
         }
 
         Serial.printf_P(PSTR("Sending your signal to Plugins (%i pulses)\r\n"), RawSignal.Number);
@@ -1054,17 +1075,21 @@ namespace RFLink
         if (!PluginRXCall(0, 0)){
           Serial.println(F("No plugin has matched your signal"));
         }
-        else
+        else {
           RFLink::sendMsgFromBuffer();
+          RawSignal.readyForDecoder = false;
+          return true;
+        }
 
         RawSignal.readyForDecoder = false;
+        return false;
       }
       else if (strncasecmp_P(cmd, commands::testRFMoveForward, commandSize) == 0)
       {
         if(!getSignalFromJson(RawSignal, commaIndex+1)) {
           Serial.println(FPSTR(error_command_aborted));
           RawSignal.readyForDecoder = false;
-          return;
+          return false;
         }
 
         while(RawSignal.Number >= (int)params::min_raw_pulses) {
@@ -1078,7 +1103,8 @@ namespace RFLink
           }
           else {
             RFLink::sendMsgFromBuffer();
-            break;
+            RawSignal.readyForDecoder = false;
+            return true;
           }
 
           RawSignal.Number -= 2;
@@ -1091,11 +1117,15 @@ namespace RFLink
         runtime::verboseSignalFetchLoop = true;
         sendRawPrint(PSTR("30;verboseSignalFetchLoop"));
         sendRawPrint(PSTR(" enabled;"),true);
+        RawSignal.readyForDecoder = false;
+        return true;
       }
       else if (strncasecmp_P(cmd, commands::disableVerboseSignalFetchLoop, commandSize) == 0) {
         runtime::verboseSignalFetchLoop = false;
         sendRawPrint(PSTR("30;verboseSignalFetchLoop"));
         sendRawPrint(PSTR(" disabled;"),true);
+        RawSignal.readyForDecoder = false;
+        return true;
       }
       else
       {
@@ -1103,6 +1133,7 @@ namespace RFLink
       }
 
       RawSignal.readyForDecoder = false;
+      return false;
     }
 
     void getStatusJsonString(JsonObject &output)

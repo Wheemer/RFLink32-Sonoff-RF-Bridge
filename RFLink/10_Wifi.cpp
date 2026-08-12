@@ -7,6 +7,9 @@
 #include "10_Wifi.h"
 #include "2_Signal.h"
 #include "6_MQTT.h"
+#ifndef RFLINK_PORTAL_DISABLED
+#include "12_Portal.h"
+#endif
 #include <time.h> // for NTP
 #ifdef ESP32
 extern "C" {
@@ -59,6 +62,15 @@ namespace RFLink { namespace Wifi {
         unsigned long captiveDnsLastRetry = 0;
 #endif
         bool mdnsStarted = false;
+        bool mdnsStartAfterSetupAccessPointShutdown = false;
+        bool setupAccessPointShutdownRequested = false;
+        unsigned long setupAccessPointClientConnectedAt = 0;
+        const unsigned long SETUP_AP_SHUTDOWN_GRACE_MS = 2500;
+        const int MAX_WIFI_SCAN_CACHE = 4;
+        String cachedWifiSsids[MAX_WIFI_SCAN_CACHE];
+        int32_t cachedWifiRssis[MAX_WIFI_SCAN_CACHE];
+        bool cachedWifiSecure[MAX_WIFI_SCAN_CACHE];
+        int cachedWifiNetworkCount = 0;
 
         // All json variable names
         const char json_name_client_enabled[] = "client_enabled";
@@ -296,11 +308,138 @@ namespace RFLink { namespace Wifi {
           return ok;
         }
 
+        void refreshWifiScanCache() {
+          cachedWifiNetworkCount = 0;
+          Serial.println(F("Scanning WiFi networks before setup AP service"));
+          WiFiMode_t previousMode = WiFi.getMode();
+          if((previousMode & WIFI_STA) == 0) {
+            WiFi.mode(WIFI_STA);
+            delay(100);
+          }
+          int count = WiFi.scanNetworks(false, true);
+          if(count < 0) {
+            Serial.println(F("WiFi scan failed"));
+            WiFi.scanDelete();
+            WiFi.mode(previousMode);
+            return;
+          }
+          for(int i = 0; i < count; i++) {
+            String ssid = WiFi.SSID(i);
+            if(ssid.length() == 0)
+              continue;
+            int32_t rssi = WiFi.RSSI(i);
+            bool secure = WiFi.encryptionType(i) != ENC_TYPE_NONE;
+            int insertAt = cachedWifiNetworkCount;
+            for(int j = 0; j < cachedWifiNetworkCount; j++) {
+              if(rssi > cachedWifiRssis[j]) {
+                insertAt = j;
+                break;
+              }
+            }
+            if(insertAt >= MAX_WIFI_SCAN_CACHE)
+              continue;
+            int limit = cachedWifiNetworkCount;
+            if(limit >= MAX_WIFI_SCAN_CACHE)
+              limit = MAX_WIFI_SCAN_CACHE - 1;
+            for(int j = limit; j > insertAt; j--) {
+              cachedWifiSsids[j] = cachedWifiSsids[j - 1];
+              cachedWifiRssis[j] = cachedWifiRssis[j - 1];
+              cachedWifiSecure[j] = cachedWifiSecure[j - 1];
+            }
+            cachedWifiSsids[insertAt] = ssid;
+            cachedWifiRssis[insertAt] = rssi;
+            cachedWifiSecure[insertAt] = secure;
+            if(cachedWifiNetworkCount < MAX_WIFI_SCAN_CACHE)
+              cachedWifiNetworkCount++;
+          }
+          WiFi.scanDelete();
+          WiFi.mode(previousMode);
+          Serial.printf_P(PSTR("Cached %i WiFi networks\r\n"), cachedWifiNetworkCount);
+        }
+
+        int getCachedWifiNetworkCount() {
+          return cachedWifiNetworkCount;
+        }
+
+        bool getCachedWifiNetwork(int index, String &ssid, int32_t &rssi, bool &secure) {
+          if(index < 0 || index >= cachedWifiNetworkCount)
+            return false;
+          ssid = cachedWifiSsids[index];
+          rssi = cachedWifiRssis[index];
+          secure = cachedWifiSecure[index];
+          return true;
+        }
+
         void stopAccessPoint() {
 #ifdef ESP8266
           stopCaptiveDns();
 #endif
+#ifndef RFLINK_PORTAL_DISABLED
+          RFLink::Portal::stopSetupServer();
+#endif
           WiFi.softAPdisconnect();
+        }
+
+        void stopMdnsDiscovery() {
+#if defined(ESP8266) || defined(ESP32)
+          if(!mdnsStarted)
+            return;
+          MDNS.end();
+          mdnsStarted = false;
+#endif
+        }
+
+        bool persistAccessPointDisabledAfterClientConnect() {
+          if(!params::AP_enabled)
+            return true;
+
+          Config::ConfigItem *item = Config::findConfigItem(json_name_ap_enabled, Config::SectionId::Wifi_id);
+          if(item != nullptr && item->getBoolValue()) {
+            item->setBoolValue(false);
+            if(!Config::saveConfigToFlash()) {
+              Serial.println(F("Failed to persist setup AP disabled state"));
+              return false;
+            }
+          }
+          params::AP_enabled = false;
+          accessPointParamsHaveChanged = false;
+          return true;
+        }
+
+        void shutdownSetupAccessPointIfReady() {
+          if(!setupAccessPointShutdownRequested)
+            return;
+          if(!WiFi.isConnected()) {
+            setupAccessPointClientConnectedAt = 0;
+            return;
+          }
+          if((WiFi.getMode() & WIFI_AP) == 0)
+            return;
+
+          if(setupAccessPointClientConnectedAt == 0) {
+            setupAccessPointClientConnectedAt = millis();
+            return;
+          }
+          if(millis() - setupAccessPointClientConnectedAt < SETUP_AP_SHUTDOWN_GRACE_MS)
+            return;
+
+          Serial.println(F("WiFi setup completed; shutting down setup AP"));
+          if(!persistAccessPointDisabledAfterClientConnect()) {
+            Serial.println(F("Setup AP shutdown postponed because AP disabled state did not persist"));
+            return;
+          }
+          stopMdnsDiscovery();
+          stopAccessPoint();
+          WiFi.enableAP(false);
+          setupAccessPointShutdownRequested = false;
+          setupAccessPointClientConnectedAt = 0;
+          mdnsStartAfterSetupAccessPointShutdown = true;
+        }
+
+        void requestSetupAccessPointShutdown() {
+          setupAccessPointShutdownRequested = true;
+          setupAccessPointClientConnectedAt = 0;
+          clientParamsHaveChanged = true;
         }
 
 
@@ -362,6 +501,7 @@ namespace RFLink { namespace Wifi {
           }
 
           if( params::AP_enabled ) {
+            refreshWifiScanCache();
             #ifdef ESP32
             WiFi.setHostname(params::client_hostname.c_str());
             #else
@@ -370,8 +510,12 @@ namespace RFLink { namespace Wifi {
             Serial.printf_P(PSTR("* WIFI AP starting with SSID '%s' and band=%i... "), params::AP_ssid.c_str(), cpWifiChannel);
             if( !startAccessPoint())
               Serial.println(F("FAILED"));
-            else
+            else {
               Serial.println(F("OK"));
+#ifndef RFLINK_PORTAL_DISABLED
+              RFLink::Portal::startSetupServer();
+#endif
+            }
           }
           else {
             // just in case it
@@ -489,15 +633,15 @@ namespace RFLink { namespace Wifi {
           String id = F("rflink32_");
           id += mac;
 
-          MDNS.addService("rfbridge2mqtt", "tcp", 80);
-          MDNS.addServiceTxt("rfbridge2mqtt", "tcp", "id", id.c_str());
-          MDNS.addServiceTxt("rfbridge2mqtt", "tcp", "name", "RF Bridge to MQTT");
-          MDNS.addServiceTxt("rfbridge2mqtt", "tcp", "model", "Sonoff RF Bridge");
-          MDNS.addServiceTxt("rfbridge2mqtt", "tcp", "sw_version", "5.3 " RFLINK_BUILDNAME);
-          MDNS.addServiceTxt("rfbridge2mqtt", "tcp", "hw_version", RFLINK_HARDWARE_NAME);
-          MDNS.addServiceTxt("rfbridge2mqtt", "tcp", "path", "/api/config");
+          MDNS.addService("rfbridge", "tcp", RFLINK_API_PORT);
+          MDNS.addServiceTxt("rfbridge", "tcp", "id", id.c_str());
+          MDNS.addServiceTxt("rfbridge", "tcp", "name", "RF Bridge");
+          MDNS.addServiceTxt("rfbridge", "tcp", "model", "Sonoff RF Bridge");
+          MDNS.addServiceTxt("rfbridge", "tcp", "sw_version", "5.3 " RFLINK_BUILDNAME);
+          MDNS.addServiceTxt("rfbridge", "tcp", "hw_version", RFLINK_HARDWARE_NAME);
+          MDNS.addServiceTxt("rfbridge", "tcp", "path", "/api/command");
           mdnsStarted = true;
-          Serial.println(F("mDNS discovery started as _rfbridge2mqtt._tcp"));
+          Serial.println(F("mDNS discovery started as _rfbridge._tcp"));
         }
 
 #ifdef ESP32
@@ -527,6 +671,9 @@ namespace RFLink { namespace Wifi {
 
         void eventHandler_WiFiStationGotIp(WiFiEvent_t event, WiFiEventInfo_t info) {
           Serial.printf_P(PSTR("WiFi Client has received a new IP: %s\r\n"), WiFi.localIP().toString().c_str());
+          if((WiFi.getMode() & WIFI_AP) == 0)
+            startMdnsDiscovery();
+          shutdownSetupAccessPointIfReady();
           reconnectServices();
         }
 
@@ -551,13 +698,9 @@ WiFiEventHandler e2;
 void eventHandler_WiFiStationGotIp(const WiFiEventStationModeGotIP& evt) {
   Serial.printf_P(PSTR("WiFi Client has received a new IP: %s\r\n"), WiFi.localIP().toString().c_str());
   Serial.flush();
-  if((WiFi.getMode() & WIFI_AP) != 0) {
-    Serial.println(F("WiFi client is connected; shutting down setup AP"));
-    stopAccessPoint();
-    WiFi.enableAP(false);
-    params::AP_enabled = false;
-  }
-  startMdnsDiscovery();
+  if((WiFi.getMode() & WIFI_AP) == 0)
+    startMdnsDiscovery();
+  shutdownSetupAccessPointIfReady();
   reconnectServices();
 }
 WiFiEventHandler e3;
@@ -610,6 +753,11 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
 
         void mainLoop() {
 #if defined(ESP8266) || defined(ESP32)
+          if(mdnsStartAfterSetupAccessPointShutdown && WiFi.isConnected() && (WiFi.getMode() & WIFI_AP) == 0) {
+            startMdnsDiscovery();
+            if(mdnsStarted)
+              mdnsStartAfterSetupAccessPointShutdown = false;
+          }
           if(mdnsStarted) {
             MDNS.update();
           }
@@ -617,7 +765,7 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
 #ifdef ESP8266
           if(captiveDnsStarted) {
             captiveDnsServer.processNextRequest();
-          } else if(params::AP_enabled && WiFi.softAPIP() != IPAddress(0, 0, 0, 0) && (captiveDnsLastRetry == 0 || millis() - captiveDnsLastRetry > 3000)) {
+          } else if(params::AP_enabled && !setupAccessPointShutdownRequested && WiFi.softAPIP() != IPAddress(0, 0, 0, 0) && (captiveDnsLastRetry == 0 || millis() - captiveDnsLastRetry > 3000)) {
             startCaptiveDns();
           }
 #endif
@@ -643,6 +791,12 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
           if(accessPointParamsHaveChanged) {
             accessPointParamsHaveChanged = false;
 
+            if(setupAccessPointShutdownRequested && WiFi.isConnected()) {
+              Serial.println(F("Skipping AP setting apply while setup AP shutdown is pending"));
+              shutdownSetupAccessPointIfReady();
+              return;
+            }
+
             Serial.println(F("Applying new Wifi AP settings"));
 
             #ifdef ESP32
@@ -654,8 +808,12 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
 
               if( !startAccessPoint() )
                 Serial.println("WIFI AP start FAILED");
-              else
+              else {
                 Serial.println("WIFI AP started");
+#ifndef RFLINK_PORTAL_DISABLED
+                RFLink::Portal::startSetupServer();
+#endif
+              }
             } else {
               Serial.println("Shutting down AP");
               stopAccessPoint();
@@ -668,8 +826,12 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
                 WiFi.enableAP(true);
                 if( !startAccessPoint() )
                   Serial.println(F("WIFI AP start FAILED"));
-                else
+                else {
                   Serial.println(F("WIFI AP started"));
+#ifndef RFLINK_PORTAL_DISABLED
+                  RFLink::Portal::startSetupServer();
+#endif
+                }
             } else {
               Serial.println(F("Shutting down AP"));
               stopAccessPoint();
@@ -682,6 +844,8 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
             clientParamsHaveChanged = 0;
             resetClientWifi();
           }
+
+          shutdownSetupAccessPointIfReady();
 
         } // end of mainLoop()
 

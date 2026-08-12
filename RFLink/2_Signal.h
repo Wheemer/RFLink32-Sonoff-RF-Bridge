@@ -108,7 +108,7 @@ namespace RFLink {
     void RawSendRF(RawSignalStruct *signal);
     void AC_Send(unsigned long data, byte cmd);
 
-    void executeCliCommand(char *cmd);
+    bool executeCliCommand(char *cmd);
 
     bool ScanEvent();
     void getStatusJsonString(JsonObject &output);
