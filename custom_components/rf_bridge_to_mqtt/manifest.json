@@ -5,6 +5,7 @@
   "config_flow": true,
   "dependencies": ["mqtt"],
   "documentation": "https://github.com/Wheemer/RFLink32-Sonoff-RF-Bridge",
+  "zeroconf": ["_rfbridge2mqtt._tcp.local."],
   "mqtt": ["rflink32/+/discovery"],
   "integration_type": "hub",
   "iot_class": "local_push",

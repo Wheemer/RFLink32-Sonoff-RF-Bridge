@@ -15,7 +15,7 @@ over MQTT.
 - Defaults the `sonoff_bridge` environment for the ESP8285 Sonoff RF Bridge.
 - Uses hardcoded RF Bridge radio pins to save space.
 - Defaults async signal mode on.
-- Provides a minimal embedded setup UI for Wi-Fi and MQTT only.
+- Provides a minimal embedded setup UI for Wi-Fi only.
 - Adds captive-portal handling for first setup from the device AP.
 - Publishes raw RF debug/capture output over MQTT.
 - Fixes Wi-Fi form handling so disabled checkboxes, including AP enable, persist.
@@ -23,6 +23,8 @@ over MQTT.
 - Publishes retained Home Assistant MQTT discovery for the bridge reboot button.
 - Publishes retained `rflink32/<mac>/discovery` metadata for the bundled
   `RF Bridge to MQTT` Home Assistant integration.
+- Supports Home Assistant Zeroconf discovery so the integration can push MQTT
+  settings to the bridge after Wi-Fi setup.
 - Automatically shuts down the setup AP after client Wi-Fi successfully receives
   an IP address.
 - Reports the hardware profile as `RFLink32 - Sonoff RF Bridge`.
@@ -45,7 +47,7 @@ The latest built firmware is published on the GitHub releases page:
 
 The current local build artifact is:
 
-`sonoff_bridge-rflink32-mqtt-setup-only-no-serial2net.bin`
+`sonoff_bridge-rflink32-wifi-only-mdns-no-serial2net.bin`
 
 ## Build
 
@@ -80,8 +82,11 @@ The build flags for this target include:
 Flash by serial using your preferred ESP8266/ESP8285 flashing tool. The release
 asset is a normal ESP8266 firmware image for the Sonoff RF Bridge target.
 
-After flashing, connect to the device AP and configure Wi-Fi plus MQTT from the
-embedded setup UI.
+After flashing, connect to the device AP and configure Wi-Fi from the embedded
+setup UI. Once the bridge joins the LAN, the bundled Home Assistant integration
+can discover it through the firmware's `_rfbridge2mqtt._tcp.local.` mDNS
+service, push Home Assistant's MQTT settings to `/api/config`, and then use the
+firmware's retained MQTT discovery metadata.
 
 Default web credentials are inherited from RFLink32:
 
@@ -97,7 +102,9 @@ custom_components/rf_bridge_to_mqtt
 ```
 
 The integration is named `RF Bridge to MQTT`. It can be discovered from the
-firmware's retained MQTT metadata once the bridge is connected to MQTT. It also
+firmware's retained MQTT metadata once the bridge is connected to MQTT. On a
+fresh bridge, Home Assistant can also discover the device by Zeroconf after
+Wi-Fi setup and configure MQTT on the bridge through the local HTTP API. It also
 creates configurable command buttons and services that publish RFLink command
 lines to the bridge MQTT command topic. Configure command buttons from the
 integration options.
@@ -120,11 +127,11 @@ fit while a long raw RF payload is still truncated on a stock-sized buffer.
 
 ## Web UI
 
-The web UI in this fork is intentionally lightweight. It keeps the useful
-setup surfaces for this build and removes normal user-facing pages that do not
-apply after Home Assistant discovery, such as firmware upload, signal tuning,
-advanced JSON editing, and unsupported radio/plugin configuration. The HTTP API
-remains available for integration/bootstrap and recovery tooling.
+The web UI in this fork is intentionally lightweight. It keeps only Wi-Fi setup
+and removes normal user-facing pages that do not apply after Home Assistant
+discovery, such as MQTT setup, firmware upload, signal tuning, advanced JSON
+editing, and unsupported radio/plugin configuration. The HTTP API remains
+available for integration/bootstrap and recovery tooling.
 
 ## Upstream
 

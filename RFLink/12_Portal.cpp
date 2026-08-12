@@ -463,37 +463,6 @@ namespace RFLink { namespace Portal {
           writeFieldRowStart(response, F("Hostname"));
           writeTextInput(response, F(""), F("client_hostname"), cfgString("client_hostname", Config::SectionId::Wifi_id));
           writeFieldRowEnd(response);
-          response->print(F("</table></div><div class='container'><h2 style='margin:5px 0'>MQTT</h2><table>"));
-          writeFieldRowStart(response, F("Enable MQTT"));
-          writeCheckbox(response, F(""), F("mqtt_enabled"), cfgBool("enabled", Config::SectionId::MQTT_id));
-          writeFieldRowEnd(response);
-          writeFieldRowStart(response, F("Server"));
-          writeTextInput(response, F(""), F("mqtt_server"), cfgString("server", Config::SectionId::MQTT_id));
-          writeFieldRowEnd(response);
-          writeFieldRowStart(response, F("Port"));
-          writeNumberInput(response, F(""), F("mqtt_port"), cfgLong("port", Config::SectionId::MQTT_id));
-          writeFieldRowEnd(response);
-          writeFieldRowStart(response, F("Client ID"));
-          writeTextInput(response, F(""), F("mqtt_id"), cfgString("id", Config::SectionId::MQTT_id));
-          writeFieldRowEnd(response);
-          writeFieldRowStart(response, F("User"));
-          writeTextInput(response, F(""), F("mqtt_user"), cfgString("user", Config::SectionId::MQTT_id));
-          writeFieldRowEnd(response);
-          writeFieldRowStart(response, F("Password"));
-          writeTextInput(response, F(""), F("mqtt_password"), cfgString("password", Config::SectionId::MQTT_id), F("password"));
-          writeFieldRowEnd(response);
-          writeFieldRowStart(response, F("Topic in"));
-          writeTextInput(response, F(""), F("mqtt_topic_in"), cfgString("topic_in", Config::SectionId::MQTT_id));
-          writeFieldRowEnd(response);
-          writeFieldRowStart(response, F("Topic out"));
-          writeTextInput(response, F(""), F("mqtt_topic_out"), cfgString("topic_out", Config::SectionId::MQTT_id));
-          writeFieldRowEnd(response);
-          writeFieldRowStart(response, F("Enable LWT"));
-          writeCheckbox(response, F(""), F("mqtt_lwt_enabled"), cfgBool("lwt_enabled", Config::SectionId::MQTT_id));
-          writeFieldRowEnd(response);
-          writeFieldRowStart(response, F("LWT topic"));
-          writeTextInput(response, F(""), F("mqtt_topic_lwt"), cfgString("topic_lwt", Config::SectionId::MQTT_id));
-          writeFieldRowEnd(response);
           response->print(F("</table><input type='submit' class='btn-green' value='Save'></div></form>"));
           writePageTail(response);
           sendStream(request, response, F("WiFi"));
@@ -513,7 +482,7 @@ namespace RFLink { namespace Portal {
           if(request->hasParam(F("client_password"), true))
             password = request->getParam(F("client_password"), true)->value();
 
-          StaticJsonDocument<1152> input;
+          StaticJsonDocument<640> input;
           JsonObject root = input.to<JsonObject>();
           JsonObject wifi = root.createNestedObject(F("wifi"));
           wifi[F("client_enabled")] = formBool(request, F("client_enabled"));
@@ -531,18 +500,6 @@ namespace RFLink { namespace Portal {
           wifi[F("ap_ip")] = cfgString("ap_ip", Config::SectionId::Wifi_id);
           wifi[F("ap_network")] = cfgString("ap_network", Config::SectionId::Wifi_id);
           wifi[F("ap_mask")] = cfgString("ap_mask", Config::SectionId::Wifi_id);
-
-          JsonObject mqtt = root.createNestedObject(F("mqtt"));
-          mqtt[F("enabled")] = formBool(request, F("mqtt_enabled"));
-          mqtt[F("server")] = formString(request, F("mqtt_server"));
-          mqtt[F("port")] = formLong(request, F("mqtt_port"), 1883);
-          mqtt[F("id")] = formString(request, F("mqtt_id"));
-          mqtt[F("user")] = formString(request, F("mqtt_user"));
-          mqtt[F("password")] = formString(request, F("mqtt_password"));
-          mqtt[F("topic_in")] = formString(request, F("mqtt_topic_in"));
-          mqtt[F("topic_out")] = formString(request, F("mqtt_topic_out"));
-          mqtt[F("lwt_enabled")] = formBool(request, F("mqtt_lwt_enabled"));
-          mqtt[F("topic_lwt")] = formString(request, F("mqtt_topic_lwt"));
 
           pushConfigAndReply(request, root, F("/wifi"));
         }
@@ -646,7 +603,6 @@ namespace RFLink { namespace Portal {
           server.on(PSTR("/services"), HTTP_GET, serveWifiRedirect);
           server.on(PSTR("/portal"), HTTP_GET, serveServicesRedirect);
           server.on(PSTR("/mqtt"), HTTP_GET, serveServicesRedirect);
-          server.on(PSTR("/mqtt"), HTTP_POST, serveWifiSetupPost);
           server.on(PSTR("/signal"), HTTP_GET, serveWifiRedirect);
           server.on(PSTR("/advanced"), HTTP_GET, serveWifiRedirect);
           server.on(PSTR("/infos"), HTTP_GET, serveWifiRedirect);

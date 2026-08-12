@@ -11,14 +11,30 @@
           "topic_lwt": "Availability topic",
           "commands": "Command library JSON"
         }
+      },
+      "zeroconf_confirm": {
+        "title": "RF Bridge to MQTT",
+        "description": "Configure the discovered RF Bridge with Home Assistant's MQTT settings.",
+        "data": {
+          "host": "Bridge host",
+          "port": "Bridge web port",
+          "web_user": "Bridge web user",
+          "web_password": "Bridge web password",
+          "broker": "MQTT broker",
+          "username": "MQTT username",
+          "password": "MQTT password"
+        }
       }
     },
     "error": {
-      "invalid_commands": "The command library JSON is invalid."
+      "invalid_commands": "The command library JSON is invalid.",
+      "cannot_connect": "Could not configure the RF Bridge.",
+      "auth_failed": "The RF Bridge web credentials were rejected."
     },
     "abort": {
       "already_configured": "This RFLink32 bridge is already configured.",
-      "invalid_discovery": "The RF Bridge to MQTT discovery payload is invalid."
+      "invalid_discovery": "The RF Bridge to MQTT discovery payload is invalid.",
+      "mqtt_not_configured": "Home Assistant's MQTT integration is not configured."
     }
   },
   "options": {

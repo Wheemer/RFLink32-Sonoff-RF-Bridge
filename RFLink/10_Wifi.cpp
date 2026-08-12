@@ -12,9 +12,11 @@
 extern "C" {
   #include "bootloader_random.h"
 }
+#include <ESPmDNS.h>
 #include "esp_sntp.h"
 #else // NOT ESP32
   #include <DNSServer.h>
+  #include <ESP8266mDNS.h>
   #include <ESP8266TrueRandom.h>
   #include <LwipDhcpServer-NonOS.h>
 #endif // ESP32
@@ -56,6 +58,7 @@ namespace RFLink { namespace Wifi {
         bool captiveDnsStarted = false;
         unsigned long captiveDnsLastRetry = 0;
 #endif
+        bool mdnsStarted = false;
 
         // All json variable names
         const char json_name_client_enabled[] = "client_enabled";
@@ -467,6 +470,34 @@ namespace RFLink { namespace Wifi {
           #endif // RFLINK_MQTT_DISABLED
         }
 
+        void startMdnsDiscovery() {
+          if(!WiFi.isConnected() || mdnsStarted)
+            return;
+
+          String instanceName = params::client_hostname;
+          if(instanceName.length() == 0)
+            instanceName = F("RFBridge");
+
+          if(!MDNS.begin(instanceName.c_str())) {
+            Serial.println(F("mDNS discovery start FAILED"));
+            return;
+          }
+
+          String mac = WiFi.macAddress();
+          mac.replace(":", "");
+          mac.toLowerCase();
+          String id = F("rflink32_");
+          id += mac;
+
+          MDNS.addService("rfbridge2mqtt", "tcp", 80);
+          MDNS.addServiceTxt("rfbridge2mqtt", "tcp", "id", id.c_str());
+          MDNS.addServiceTxt("rfbridge2mqtt", "tcp", "name", "RF Bridge to MQTT");
+          MDNS.addServiceTxt("rfbridge2mqtt", "tcp", "model", "Sonoff RF Bridge");
+          MDNS.addServiceTxt("rfbridge2mqtt", "tcp", "path", "/api/config");
+          mdnsStarted = true;
+          Serial.println(F("mDNS discovery started as _rfbridge2mqtt._tcp"));
+        }
+
 #ifdef ESP32
         void eventHandler_WiFiStationConnected(WiFiEvent_t event, WiFiEventInfo_t info) {
 
@@ -524,6 +555,7 @@ void eventHandler_WiFiStationGotIp(const WiFiEventStationModeGotIP& evt) {
     WiFi.enableAP(false);
     params::AP_enabled = false;
   }
+  startMdnsDiscovery();
   reconnectServices();
 }
 WiFiEventHandler e3;
@@ -575,6 +607,11 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
         }
 
         void mainLoop() {
+#if defined(ESP8266) || defined(ESP32)
+          if(mdnsStarted) {
+            MDNS.update();
+          }
+#endif
 #ifdef ESP8266
           if(captiveDnsStarted) {
             captiveDnsServer.processNextRequest();
