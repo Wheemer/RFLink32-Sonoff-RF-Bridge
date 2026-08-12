@@ -40,7 +40,7 @@ The latest built firmware is published on the GitHub releases page:
 
 The first release asset is:
 
-`sonoff_bridge-rflink32-custom-ui-captive-p6-buffer1600.bin`
+`sonoff_bridge-rflink32-custom-ui-captive-p6-buffer1600-mqtt-raw-capture.bin`
 
 ## Build
 
