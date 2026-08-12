@@ -6,7 +6,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import RFBridgeToMqttHub, RFLink32Command
-from .const import CONF_IDENTIFIERS, CONF_NAME, CONF_SW_VERSION, DOMAIN
+from .const import (
+    CONF_HW_VERSION,
+    CONF_IDENTIFIERS,
+    CONF_MODEL,
+    CONF_NAME,
+    CONF_SW_VERSION,
+    DOMAIN,
+)
 
 
 async def async_setup_entry(
@@ -36,8 +43,9 @@ class RFLink32CommandButton(ButtonEntity):
             "identifiers": {(DOMAIN, identifier) for identifier in identifiers},
             "name": hub.entry.data.get(CONF_NAME, hub.entry.title),
             "manufacturer": "RFLink32",
-            "model": "RF Bridge to MQTT",
+            "model": hub.entry.data.get(CONF_MODEL, "Sonoff RF Bridge"),
             "sw_version": hub.entry.data.get(CONF_SW_VERSION),
+            "hw_version": hub.entry.data.get(CONF_HW_VERSION),
         }
 
     async def async_press(self) -> None:

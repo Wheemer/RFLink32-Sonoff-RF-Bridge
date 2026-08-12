@@ -493,6 +493,8 @@ namespace RFLink { namespace Wifi {
           MDNS.addServiceTxt("rfbridge2mqtt", "tcp", "id", id.c_str());
           MDNS.addServiceTxt("rfbridge2mqtt", "tcp", "name", "RF Bridge to MQTT");
           MDNS.addServiceTxt("rfbridge2mqtt", "tcp", "model", "Sonoff RF Bridge");
+          MDNS.addServiceTxt("rfbridge2mqtt", "tcp", "sw_version", "5.3 " RFLINK_BUILDNAME);
+          MDNS.addServiceTxt("rfbridge2mqtt", "tcp", "hw_version", RFLINK_HARDWARE_NAME);
           MDNS.addServiceTxt("rfbridge2mqtt", "tcp", "path", "/api/config");
           mdnsStarted = true;
           Serial.println(F("mDNS discovery started as _rfbridge2mqtt._tcp"));

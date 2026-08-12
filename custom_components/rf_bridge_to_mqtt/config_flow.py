@@ -24,7 +24,9 @@ from . import parse_commands
 from .const import (
     CONF_COMMANDS,
     CONF_HOST,
+    CONF_HW_VERSION,
     CONF_IDENTIFIERS,
+    CONF_MODEL,
     CONF_NAME,
     CONF_SW_VERSION,
     CONF_TOPIC_IN,
@@ -136,16 +138,27 @@ class RFBridgeToMqttConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         properties = discovery_info.properties or {}
         unique_id = _discovery_identifier(properties.get("id"), discovery_info.name)
         await self.async_set_unique_id(unique_id)
-        self._abort_if_unique_id_configured(updates={CONF_HOST: host})
 
         self._discovery = {
             CONF_HOST: host,
             CONF_IDENTIFIERS: [unique_id],
+            CONF_HW_VERSION: _txt_value(properties.get(CONF_HW_VERSION)),
+            CONF_MODEL: _txt_value(properties.get(CONF_MODEL)) or "Sonoff RF Bridge",
             CONF_NAME: _txt_value(properties.get("name")) or "RF Bridge to MQTT",
+            CONF_SW_VERSION: _txt_value(properties.get(CONF_SW_VERSION)),
             CONF_WEB_PORT: discovery_info.port or DEFAULT_WEB_PORT,
             CONF_WEB_USER: DEFAULT_WEB_USER,
             CONF_WEB_PASSWORD: DEFAULT_WEB_PASSWORD,
         }
+        self._abort_if_unique_id_configured(
+            updates={
+                CONF_HOST: host,
+                CONF_HW_VERSION: self._discovery.get(CONF_HW_VERSION),
+                CONF_MODEL: self._discovery.get(CONF_MODEL),
+                CONF_NAME: self._discovery.get(CONF_NAME),
+                CONF_SW_VERSION: self._discovery.get(CONF_SW_VERSION),
+            }
+        )
         return await self.async_step_zeroconf_confirm()
 
     async def async_step_zeroconf_confirm(
@@ -192,9 +205,12 @@ class RFBridgeToMqttConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     title=self._discovery.get(CONF_NAME) or "RF Bridge to MQTT",
                     data={
                         CONF_HOST: merged[CONF_HOST],
+                        CONF_HW_VERSION: self._discovery.get(CONF_HW_VERSION),
                         CONF_IDENTIFIERS: self._discovery[CONF_IDENTIFIERS],
+                        CONF_MODEL: self._discovery.get(CONF_MODEL),
                         CONF_NAME: self._discovery.get(CONF_NAME)
                         or "RF Bridge to MQTT",
+                        CONF_SW_VERSION: self._discovery.get(CONF_SW_VERSION),
                         CONF_TOPIC_IN: DEFAULT_TOPIC_IN,
                         CONF_TOPIC_OUT: DEFAULT_TOPIC_OUT,
                         CONF_TOPIC_LWT: DEFAULT_TOPIC_LWT,
@@ -277,6 +293,8 @@ class RFBridgeToMqttConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_TOPIC_IN: data.get(CONF_TOPIC_IN, DEFAULT_TOPIC_IN),
                 CONF_TOPIC_OUT: data.get(CONF_TOPIC_OUT, DEFAULT_TOPIC_OUT),
                 CONF_TOPIC_LWT: data.get(CONF_TOPIC_LWT, DEFAULT_TOPIC_LWT),
+                CONF_HW_VERSION: data.get(CONF_HW_VERSION),
+                CONF_MODEL: data.get(CONF_MODEL),
                 CONF_SW_VERSION: data.get(CONF_SW_VERSION),
             }
         )
@@ -285,6 +303,8 @@ class RFBridgeToMqttConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             title=data.get(CONF_NAME) or "RF Bridge to MQTT",
             data={
                 CONF_IDENTIFIERS: data.get(CONF_IDENTIFIERS, [unique_id]),
+                CONF_HW_VERSION: data.get(CONF_HW_VERSION),
+                CONF_MODEL: data.get(CONF_MODEL),
                 CONF_NAME: data.get(CONF_NAME) or "RF Bridge to MQTT",
                 CONF_TOPIC_IN: data.get(CONF_TOPIC_IN, DEFAULT_TOPIC_IN),
                 CONF_TOPIC_OUT: data.get(CONF_TOPIC_OUT, DEFAULT_TOPIC_OUT),

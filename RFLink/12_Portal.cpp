@@ -49,7 +49,7 @@ namespace RFLink { namespace Portal {
 
         static const char PAGE_CSS[] PROGMEM = R"CSS(html,body{margin:0;height:100%;font-family:Avenir,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;color:#2c3e50}.app{display:flex;flex-direction:row;height:100vh}.menu{position:absolute;top:0;left:0;z-index:20;background:white;height:100vh;width:290px;transition:all .25s}.menu-backdrop{display:none}.page{position:absolute;top:0;left:290px;width:calc(100% - 290px);height:100%}.navbar>header{background:#333;padding:.5em;display:grid;grid-template-columns:auto auto auto;justify-items:stretch}.white{color:white}.menu-title{background:#585858;height:62px;display:flex;align-items:center;justify-content:center;color:#fff}.menu-title h1{margin:0;text-align:center}.menu-cat{background:#a8a7a7;padding:.5em 0;margin:0;list-style:none}.link{display:block;text-decoration:none;font-size:1rem;color:black;margin-top:0}.link>li{padding:10px;margin-top:0;list-style:none}.menu-cat li:hover{background:#0002}.link-icon{font-size:1.2rem}.page-slot-container{height:calc(100% - 78px);overflow-y:auto;padding:8px}.page-title{margin:0;text-align:center}.container{border:1px solid #0006;border-radius:5px;width:calc(100% - 14px);padding:5px;margin:15px 3px;background:white}.w-auto{width:min-content!important;max-width:calc(100% - 14px)}table{font-family:arial,sans-serif;border-collapse:collapse;width:100%;border:1px solid #ddd}tr,td,th{border:1px solid #ddd}td,th{text-align:left;padding:8px}.category{font-weight:bold;font-size:1.15rem}.setting{font-size:1.05rem}input,select,textarea,button{font-size:16px;box-sizing:border-box;max-width:100%}input[type=text]:disabled,input[type=password]:disabled,input[type=number]:disabled,select:disabled{opacity:.25}input[type=text],input[type=password],input[type=number],select,textarea{padding:8px;font-size:.9rem;box-sizing:border-box;width:100%;border:1px solid gray;border-radius:5px;-webkit-appearance:none}select{-webkit-appearance:menulist}button,input[type=submit],input[type=file]::-webkit-file-upload-button{margin:3px 0;padding:8px;font-size:.9rem;width:100%;cursor:pointer;border-radius:5px;-webkit-appearance:none}.btn-green{background-color:yellowgreen;border:1px solid #7fa734}.btn-red{background-color:rgb(223,71,89);border:rgb(198,69,85)}.btn-big{font-size:1.2rem;padding:12px}.switch{position:relative;display:inline-block;width:60px;height:30px}.switch input{opacity:0;width:0;height:0}.slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background-color:#ccc;-webkit-transition:.4s;transition:.4s}.slider:before{position:absolute;content:'';height:20px;width:20px;left:7px;bottom:5px;background-color:white;-webkit-transition:.15s;transition:.15s}input:checked+.slider{background-color:#2196F3}input:disabled+.slider{background-color:#f6f6f6}input:focus+.slider{box-shadow:0 0 1px #2196F3}input:checked+.slider:before{-webkit-transform:translateX(26px);-ms-transform:translateX(26px);transform:translateX(26px)}.slider.round{border-radius:20px}.slider.round:before{border-radius:50%}.input-container{padding:3px;width:100%}.status-connected,.status-enabled,.status-running{color:#3db43d}.status-disconnected{color:#dc872e}.status-disabled{color:#929292}pre{white-space:pre-wrap;overflow:auto;margin:0}.info-page{display:flex;height:calc(100% - 30px);justify-content:center;align-items:center;flex-direction:column;text-align:center}.info-page span{margin:2px 0}#toast-root{position:fixed;right:16px;top:16px;z-index:50}.toast-container{position:relative;overflow:hidden;padding:16px 24px;background-color:#aaa;display:flex;align-items:center;border-radius:5px;cursor:pointer;flex-direction:column;margin-bottom:16px;min-width:220px}.toast-container>p{margin:0}.toast-title{font-size:1.5rem;font-weight:bold}.toast-message,.toast-title{font-family:Avenir,Helvetica,Arial,sans-serif;color:white}.toast-success{background-color:#04b13d!important}.toast-warning{background-color:orange!important}.toast-error{background-color:crimson!important}.toast-close{position:absolute;top:0;right:0;width:32px;height:32px;padding:0;border:2px solid white;background-color:#fff}.toast-bar{position:absolute;background-color:#fff6;bottom:0;left:0;height:8px;width:100%}#menu-checkbox{display:none}.menu-link{display:none;color:#fff;text-transform:uppercase;border:1px solid white;border-radius:5px;padding:5px 10px;font-size:30px}@media(max-width:992px){.menu{left:-100%}.page{left:0;width:100%}.menu-link{display:inline-block}#menu-checkbox:checked~.menu{left:0}.menu-backdrop{display:none}#menu-checkbox:checked~.menu-backdrop{display:block;position:absolute;top:0;left:0;z-index:10;background:#0008;height:100vh;width:100%}})CSS";
 
-        static const char APP_JS[] PROGMEM = R"JS((function(){function esc(s){return String(s||'').replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]})}function toast(type,msg){var r=document.getElementById('toast-root');if(!r)return;var el=document.createElement('div');el.className='toast-container toast-'+type;el.innerHTML='<button class="toast-close" type="button">x</button><p class="toast-title">'+type.charAt(0).toUpperCase()+type.slice(1)+'</p><p class="toast-message">'+esc(msg)+'</p><div class="toast-bar"></div>';r.appendChild(el);var close=function(){if(el.parentNode)el.parentNode.removeChild(el)};el.onclick=close;setTimeout(close,type==='success'?5000:10000)}document.addEventListener('submit',function(e){var f=e.target;if(!f.matches('form[data-async-save],form[data-async-reboot]'))return;e.preventDefault();var b=f.querySelector('[type=submit]');if(b)b.disabled=true;var opts={method:f.method||'POST',credentials:'same-origin'};if(f.matches('form[data-async-save]')){var data=new FormData(f);data.append('async','1');opts.body=data}fetch(f.action,opts).then(function(resp){return resp.text().then(function(t){return {ok:resp.ok,text:t}})}).then(function(r){if(r.ok)toast('success',r.text||'Saved');else toast('error',r.text||'Request failed')}).catch(function(err){toast('error','A network error occured: '+err)}).finally(function(){if(b)b.disabled=false})},false)})();)JS";
+        static const char APP_JS[] PROGMEM = R"JS((function(){function esc(s){return String(s||'').replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]})}function toast(type,msg){var r=document.getElementById('toast-root');if(!r)return;var el=document.createElement('div');el.className='toast-container toast-'+type;el.innerHTML='<button class="toast-close" type="button">x</button><p class="toast-title">'+type.charAt(0).toUpperCase()+type.slice(1)+'</p><p class="toast-message">'+esc(msg)+'</p><div class="toast-bar"></div>';r.appendChild(el);var close=function(){if(el.parentNode)el.parentNode.removeChild(el)};el.onclick=close;setTimeout(close,type==='success'?5000:10000)}function loadWifi(){var b=document.getElementById('scan-wifi'),l=document.getElementById('wifi-networks');if(!b||!l)return;b.disabled=true;b.textContent='Scanning...';fetch('/api/wifi/scan',{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(items){l.innerHTML='';items.forEach(function(n){var o=document.createElement('option');o.value=n.ssid;o.label=n.ssid+' ('+n.rssi+' dBm)';l.appendChild(o)});toast('success',items.length?'WiFi scan complete':'No networks found')}).catch(function(e){toast('error','WiFi scan failed: '+e)}).finally(function(){b.disabled=false;b.textContent='Scan'})}document.addEventListener('click',function(e){if(e.target&&e.target.id==='scan-wifi')loadWifi()},false);document.addEventListener('DOMContentLoaded',loadWifi);document.addEventListener('submit',function(e){var f=e.target;if(!f.matches('form[data-async-save],form[data-async-reboot]'))return;e.preventDefault();var b=f.querySelector('[type=submit]');if(b)b.disabled=true;var opts={method:f.method||'POST',credentials:'same-origin'};if(f.matches('form[data-async-save]')){var data=new FormData(f);data.append('async','1');opts.body=data}fetch(f.action,opts).then(function(resp){return resp.text().then(function(t){return {ok:resp.ok,text:t}})}).then(function(r){if(r.ok)toast('success',r.text||'Saved');else toast('error',r.text||'Request failed')}).catch(function(err){toast('error','A network error occured: '+err)}).finally(function(){if(b)b.disabled=false})},false)})();)JS";
 
         Config::ConfigItem *cfg(const char *name, Config::SectionId section) {
           return Config::findConfigItem(name, section);
@@ -74,12 +74,6 @@ namespace RFLink { namespace Portal {
           if(item == nullptr)
             return false;
           return item->getBoolValue();
-        }
-
-        void serveStaticCss(AsyncWebServerRequest *request) {
-          AsyncWebServerResponse *response = request->beginResponse_P(200, F("text/css"), PAGE_CSS);
-          response->addHeader(F("Cache-Control"), F("public, max-age=86400"));
-          request->send(response);
         }
 
         void serveStaticJs(AsyncWebServerRequest *request) {
@@ -116,14 +110,28 @@ namespace RFLink { namespace Portal {
           }
         }
 
+        void writeJsonEscaped(Print *out, const String &input) {
+          for(size_t i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+            if(c == '"' || c == '\\') {
+              out->print('\\');
+              out->print(c);
+            } else if(c == '\n') {
+              out->print(F("\\n"));
+            } else if(c == '\r') {
+              out->print(F("\\r"));
+            } else {
+              out->print(c);
+            }
+          }
+        }
+
         void writePageHead(AsyncResponseStream *out, const __FlashStringHelper *title) {
           out->print(F("<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'><title>"));
           out->print(title);
-          out->print(F("</title><link rel='stylesheet' href='/assets/style.css'><style>*{box-sizing:border-box}html,body{color:#2c3e50;overflow-x:hidden}.navbar>header{background-color:#333}.navbar h2{overflow-wrap:anywhere}.menu{background-color:white}.menu-title{background-color:#585858;color:#fff}.menu-cat{background-color:#a8a7a7;color:#fff;padding:.5em 0}.link{color:black;text-decoration:none;font-size:1rem}.link>li{padding:10px;margin-top:0;list-style:none}.link>li:hover{background-color:#0002}.link-icon{font-size:1.2rem}.page-slot-container{overflow-x:hidden}.container{border:1px solid #0006;border-radius:5px;padding:5px;margin:15px 3px;width:calc(100% - 6px);max-width:760px;overflow-x:hidden}.page-title{margin:0}table{width:100%;max-width:100%;table-layout:fixed}td,th{overflow-wrap:anywhere;word-break:break-word}.category{width:28%}.setting{width:34%}.info-page{display:flex;height:calc(100% - 30px);justify-content:flex-start;align-items:center;flex-direction:column;text-align:left}.info-page .container{max-width:760px}.info-page h2{text-align:center;margin:6px 0 10px}.credit-line{line-height:1.35;margin:8px 0}.switch{position:relative;display:inline-block;width:60px;height:30px}.switch input{opacity:0;width:0;height:0}.slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background-color:#ccc;transition:.4s}.slider:before{position:absolute;content:'';height:20px;width:20px;left:7px;bottom:5px;background-color:white;transition:.15s}input:checked+.slider{background-color:#2196F3}input:checked+.slider:before{transform:translateX(26px)}.slider.round{border-radius:20px}.slider.round:before{border-radius:50%}@media(max-width:600px){.page-slot-container{padding:6px}.container{width:100%;max-width:100%;margin:10px 0;padding:5px}.page-title{font-size:1.45rem}.navbar>header{grid-template-columns:42px minmax(0,1fr) 42px}.navbar h2{font-size:1rem;line-height:1.2}td,th{padding:6px 5px;font-size:.92rem}.category{font-size:.98rem;width:30%}.setting{font-size:.92rem;width:35%}input,select,textarea,button{font-size:16px}.btn-big{font-size:1rem;padding:10px}.link>li{padding:12px 10px}}</style></head><body><div class='app'><input type='checkbox' id='menu-checkbox'><div class='menu'><nav role='navigation' class='mobile-menu' style='display:flex;flex-direction:column;height:100%'><div class='menu-title'><h1>Menu</h1></div><ul class='menu-cat' style='flex-grow:1'>"));
-          out->print(F("<a class='link' href='/wifi'><li><span class='link-icon'>&#128246;</span> Setup</li></a>"));
-          out->print(F("</ul></nav></div><label class='menu-backdrop' for='menu-checkbox'></label><div id='toast-root'></div><div class='page'><div class='navbar'><header><div><label for='menu-checkbox'><span class='menu-link'>&#9776;</span></label></div><div style='display:flex;justify-content:center;flex-direction:column'><h2 class='white' style='margin:0;text-align:center'>"));
+          out->print(F("</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Avenir,Helvetica,Arial,sans-serif;color:#2c3e50;background:#f6f7f8}.app{min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:18px}.page{width:100%;max-width:460px}.navbar{background:#333;color:#fff;border-radius:5px 5px 0 0;padding:14px 16px;text-align:center}.navbar h2{font-size:1.1rem;line-height:1.25;margin:0;overflow-wrap:anywhere}.page-slot-container{background:white;border:1px solid #0006;border-top:0;border-radius:0 0 5px 5px;padding:16px}.page-title{margin:0 0 14px;text-align:center;font-size:1.5rem}.field{margin:0 0 14px}.field label{display:block;font-size:.95rem;margin-bottom:5px}.ssid-row{display:grid;grid-template-columns:minmax(0,1fr) 82px;gap:8px}input,button{font-size:16px;width:100%;padding:10px;border:1px solid gray;border-radius:5px}button,input[type=submit]{cursor:pointer}.btn-green{background-color:yellowgreen;border:1px solid #7fa734}.btn-secondary{background:#e9ecef;border:1px solid #adb5bd}#toast-root{position:fixed;right:16px;top:16px;z-index:50}.toast-container{position:relative;overflow:hidden;padding:16px 24px;background-color:#aaa;display:flex;align-items:center;border-radius:5px;cursor:pointer;flex-direction:column;margin-bottom:16px;min-width:220px}.toast-container>p{margin:0}.toast-title{font-size:1.5rem;font-weight:bold}.toast-message,.toast-title{font-family:Avenir,Helvetica,Arial,sans-serif;color:white}.toast-success{background-color:#04b13d!important}.toast-error{background-color:crimson!important}.toast-close{position:absolute;top:0;right:0;width:32px;height:32px;padding:0;border:2px solid white;background-color:#fff}.toast-bar{position:absolute;background-color:#fff6;bottom:0;left:0;height:8px;width:100%}@media(max-width:520px){.app{padding:0}.page{max-width:none}.navbar,.page-slot-container{border-radius:0;border-left:0;border-right:0}.ssid-row{grid-template-columns:1fr}.page-title{font-size:1.35rem}}</style></head><body><div class='app'><div id='toast-root'></div><div class='page'><div class='navbar'><h2>"));
           out->print(F(RFLINK_HARDWARE_NAME));
-          out->print(F("</h2></div><div></div></header></div><div class='page-slot-container'><h1 class='page-title'>"));
+          out->print(F("</h2></div><div class='page-slot-container'><h1 class='page-title'>"));
           out->print(title);
           out->print(F("</h1>"));
         }
@@ -435,35 +443,11 @@ namespace RFLink { namespace Portal {
 
           AsyncResponseStream *response = request->beginResponseStream(F("text/html; charset=utf-8"));
           writePageHead(response, F("WiFi"));
-          response->print(F("<form method='post' action='/wifi' data-async-save='1'><div class='container'><h2 style='margin:5px 0'>Client</h2><table>"));
-          writeFieldRowStart(response, F("Enable client WiFi"));
-          writeCheckbox(response, F(""), F("client_enabled"), cfgBool("client_enabled", Config::SectionId::Wifi_id));
-          writeFieldRowEnd(response);
-          writeFieldRowStart(response, F("WiFi name"));
-          writeTextInput(response, F(""), F("client_ssid"), cfgString("client_ssid", Config::SectionId::Wifi_id));
-          writeFieldRowEnd(response);
-          writeFieldRowStart(response, F("WiFi password"));
-          writeTextInput(response, F(""), F("client_password"), cfgString("client_password", Config::SectionId::Wifi_id), F("password"));
-          writeFieldRowEnd(response);
-          writeFieldRowStart(response, F("Use DHCP"));
-          writeCheckbox(response, F(""), F("client_dhcp_enabled"), cfgBool("client_dhcp_enabled", Config::SectionId::Wifi_id));
-          writeFieldRowEnd(response);
-          writeFieldRowStart(response, F("Static IP"));
-          writeTextInput(response, F(""), F("client_ip"), cfgString("client_ip", Config::SectionId::Wifi_id));
-          writeFieldRowEnd(response);
-          writeFieldRowStart(response, F("Mask"));
-          writeTextInput(response, F(""), F("client_mask"), cfgString("client_mask", Config::SectionId::Wifi_id));
-          writeFieldRowEnd(response);
-          writeFieldRowStart(response, F("Gateway"));
-          writeTextInput(response, F(""), F("client_gateway"), cfgString("client_gateway", Config::SectionId::Wifi_id));
-          writeFieldRowEnd(response);
-          writeFieldRowStart(response, F("DNS"));
-          writeTextInput(response, F(""), F("client_dns"), cfgString("client_dns", Config::SectionId::Wifi_id));
-          writeFieldRowEnd(response);
-          writeFieldRowStart(response, F("Hostname"));
-          writeTextInput(response, F(""), F("client_hostname"), cfgString("client_hostname", Config::SectionId::Wifi_id));
-          writeFieldRowEnd(response);
-          response->print(F("</table><input type='submit' class='btn-green' value='Save'></div></form>"));
+          response->print(F("<form method='post' action='/wifi' data-async-save='1'><div class='field'><label for='client_ssid'>WiFi name</label><div class='ssid-row'><input id='client_ssid' name='client_ssid' list='wifi-networks' type='text' autocomplete='off' value=\""));
+          writeEscaped(response, cfgString("client_ssid", Config::SectionId::Wifi_id));
+          response->print(F("\"><button id='scan-wifi' class='btn-secondary' type='button'>Scan</button></div><datalist id='wifi-networks'></datalist></div><div class='field'><label for='client_password'>WiFi password</label><input id='client_password' name='client_password' type='password' autocomplete='current-password' value=\""));
+          writeEscaped(response, cfgString("client_password", Config::SectionId::Wifi_id));
+          response->print(F("\"></div><input type='submit' class='btn-green' value='Save'></form>"));
           writePageTail(response);
           sendStream(request, response, F("WiFi"));
         }
@@ -482,18 +466,13 @@ namespace RFLink { namespace Portal {
           if(request->hasParam(F("client_password"), true))
             password = request->getParam(F("client_password"), true)->value();
 
-          StaticJsonDocument<640> input;
+          StaticJsonDocument<512> input;
           JsonObject root = input.to<JsonObject>();
           JsonObject wifi = root.createNestedObject(F("wifi"));
-          wifi[F("client_enabled")] = formBool(request, F("client_enabled"));
-          wifi[F("client_dhcp_enabled")] = formBool(request, F("client_dhcp_enabled"));
+          wifi[F("client_enabled")] = true;
+          wifi[F("client_dhcp_enabled")] = true;
           wifi[F("client_ssid")] = ssid;
           wifi[F("client_password")] = password;
-          wifi[F("client_ip")] = request->hasParam(F("client_ip"), true) ? formString(request, F("client_ip")) : cfgString("client_ip", Config::SectionId::Wifi_id);
-          wifi[F("client_mask")] = request->hasParam(F("client_mask"), true) ? formString(request, F("client_mask")) : cfgString("client_mask", Config::SectionId::Wifi_id);
-          wifi[F("client_gateway")] = request->hasParam(F("client_gateway"), true) ? formString(request, F("client_gateway")) : cfgString("client_gateway", Config::SectionId::Wifi_id);
-          wifi[F("client_dns")] = request->hasParam(F("client_dns"), true) ? formString(request, F("client_dns")) : cfgString("client_dns", Config::SectionId::Wifi_id);
-          wifi[F("client_hostname")] = request->hasParam(F("client_hostname"), true) ? formString(request, F("client_hostname")) : cfgString("client_hostname", Config::SectionId::Wifi_id);
           wifi[F("ap_enabled")] = true;
           wifi[F("ap_ssid")] = cfgString("ap_ssid", Config::SectionId::Wifi_id);
           wifi[F("ap_password")] = cfgString("ap_password", Config::SectionId::Wifi_id);
@@ -502,6 +481,29 @@ namespace RFLink { namespace Portal {
           wifi[F("ap_mask")] = cfgString("ap_mask", Config::SectionId::Wifi_id);
 
           pushConfigAndReply(request, root, F("/wifi"));
+        }
+
+        void serveWifiScanGet(AsyncWebServerRequest *request) {
+          if(!checkPageAuthentication(request))
+            return;
+
+          int count = WiFi.scanNetworks();
+          AsyncResponseStream *response = request->beginResponseStream(F("application/json"));
+          response->print('[');
+          for(int i = 0; i < count; i++) {
+            if(i > 0)
+              response->print(',');
+            response->print(F("{\"ssid\":\""));
+            writeJsonEscaped(response, WiFi.SSID(i));
+            response->print(F("\",\"rssi\":"));
+            response->print(WiFi.RSSI(i));
+            response->print(F(",\"secure\":"));
+            response->print(WiFi.encryptionType(i) == ENC_TYPE_NONE ? F("false") : F("true"));
+            response->print('}');
+          }
+          response->print(']');
+          WiFi.scanDelete();
+          sendStream(request, response, F("WiFi scan"));
         }
 
         void serverApiConfigGet(AsyncWebServerRequest *request) {
@@ -593,7 +595,6 @@ namespace RFLink { namespace Portal {
           refreshParametersFromConfig(false);
 
           server.onNotFound(notFound);
-          server.on(PSTR("/assets/style.css"), HTTP_GET, serveStaticCss);
           server.on(PSTR("/assets/app.js"), HTTP_GET, serveStaticJs);
           server.on(PSTR("/"), HTTP_GET, serveRootPage);
           server.on(PSTR("/index.html"), HTTP_GET, serveRootPage);
@@ -621,6 +622,7 @@ namespace RFLink { namespace Portal {
 
           server.on(PSTR("/api/config"), HTTP_GET, serverApiConfigGet);
           server.on(PSTR("/api/status"), HTTP_GET, serveApiStatusGet);
+          server.on(PSTR("/api/wifi/scan"), HTTP_GET, serveWifiScanGet);
 
           server.on(PSTR("/api/reboot"), HTTP_GET, serveApiReboot);
           server.on(PSTR("/reboot"), HTTP_POST, serveApiReboot);
