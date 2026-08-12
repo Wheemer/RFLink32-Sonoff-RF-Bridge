@@ -1,6 +1,9 @@
 .idea
 .pio
 .vscode
+__pycache__/
+*.pyc
+*.bin
 pictures/Full size/
 RFLink/*.ino
 cmake-build-*

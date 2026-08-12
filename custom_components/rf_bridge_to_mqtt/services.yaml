@@ -1,0 +1,32 @@
+send_raw:
+  name: Send raw command
+  description: Publish one raw RFLink32 command line to the bridge MQTT command topic.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional RF Bridge to MQTT config entry ID. Required if more than one bridge is configured.
+      selector:
+        text:
+    command:
+      name: Command
+      required: true
+      description: Raw single-line RFLink32 command without CR/LF.
+      selector:
+        text:
+          multiline: false
+
+send_named:
+  name: Send named command
+  description: Send a command from this bridge's configured command library.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional RF Bridge to MQTT config entry ID. Required if more than one bridge is configured.
+      selector:
+        text:
+    command_key:
+      name: Command key
+      required: true
+      description: Key from the configured command library.
+      selector:
+        text:

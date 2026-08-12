@@ -26,7 +26,6 @@
 #include "5_Plugin.h"
 #include "6_MQTT.h"
 #include "8_OLED.h"
-#include "9_Serial2Net.h"
 #include "10_Wifi.h"
 #include "11_Config.h"
 #include "12_Portal.h"
@@ -187,7 +186,6 @@ namespace RFLink {
       #ifndef RFLINK_MQTT_DISABLED
       RFLink::Mqtt::setup_MQTT();
       #endif // RFLINK_MQTT_DISABLED
-      RFLink::Serial2Net::setup();
 #endif // RFLINK_WIFI_ENABLED
 
 
@@ -217,9 +215,6 @@ namespace RFLink {
   #ifndef RFLINK_PORTAL_DISABLED
       RFLink::Portal::start();
   #endif // RFLINK_PORTAL_DISABLED
-#ifndef RFLINK_SERIAL2NET_DISABLED
-      RFLink::Serial2Net::setup();
-#endif // !RFLINK_SERIAL2NET_DISABLED
 #endif
     }
 
@@ -232,10 +227,6 @@ namespace RFLink {
 #if defined(RFLINK_WIFI_ENABLED)
       RFLink::Wifi::mainLoop();
 #endif
-
-#ifndef RFLINK_SERIAL2NET_DISABLED
-      RFLink::Serial2Net::serverLoop();
-#endif // !RFLINK_SERIAL2NET_DISABLED
 
 #if defined(SERIAL_ENABLED)
       readSerialAndExecute();
@@ -266,11 +257,6 @@ namespace RFLink {
         RFLink::Mqtt::publishMsg();
 #endif // !RFLINK_MQTT_DISABLED
 
-
-#ifndef RFLINK_SERIAL2NET_DISABLED
-        RFLink::Serial2Net::broadcastMessage(pbuffer);
-#endif // !RFLINK_SERIAL2NET_DISABLED
-
 #ifdef OLED_ENABLED
         print_OLED();
 #endif
@@ -287,12 +273,6 @@ namespace RFLink {
         if(end_of_line)
           Serial.println();
 #endif
-#ifndef RFLINK_SERIAL2NET_DISABLED
-        RFLink::Serial2Net::broadcastMessage(buf);
-        if(end_of_line)
-          RFLink::Serial2Net::broadcastMessage(F("\r\n"));
-#endif // !RFLINK_SERIAL2NET_DISABLED
-
         appendRawMqttText(buf, end_of_line);
 
       }
@@ -303,9 +283,6 @@ namespace RFLink {
 #ifdef SERIAL_ENABLED
       Serial.print(n);
 #endif
-#ifndef RFLINK_SERIAL2NET_DISABLED
-      RFLink::Serial2Net::broadcastMessage(String(n).c_str());
-#endif // !RFLINK_SERIAL2NET_DISABLED
       char numberBuf[16];
       ltoa(n, numberBuf, 10);
       appendRawMqttText(numberBuf);
@@ -316,9 +293,6 @@ namespace RFLink {
 #ifdef SERIAL_ENABLED
       Serial.print(n);
 #endif
-#ifndef RFLINK_SERIAL2NET_DISABLED
-      RFLink::Serial2Net::broadcastMessage(String(n).c_str());
-#endif // !RFLINK_SERIAL2NET_DISABLED
       char numberBuf[16];
       ultoa(n, numberBuf, 10);
       appendRawMqttText(numberBuf);
@@ -329,9 +303,6 @@ namespace RFLink {
 #ifdef SERIAL_ENABLED
       Serial.print(n);
 #endif
-#ifndef RFLINK_SERIAL2NET_DISABLED
-      RFLink::Serial2Net::broadcastMessage(String(n).c_str());
-#endif // !RFLINK_SERIAL2NET_DISABLED
       char numberBuf[16];
       itoa(n, numberBuf, 10);
       appendRawMqttText(numberBuf);
@@ -342,9 +313,6 @@ namespace RFLink {
 #ifdef SERIAL_ENABLED
       Serial.print(n);
 #endif
-#ifndef RFLINK_SERIAL2NET_DISABLED
-      RFLink::Serial2Net::broadcastMessage(String(n).c_str());
-#endif // !RFLINK_SERIAL2NET_DISABLED
       char numberBuf[16];
       utoa(n, numberBuf, 10);
       appendRawMqttText(numberBuf);
@@ -355,9 +323,6 @@ namespace RFLink {
 #ifdef SERIAL_ENABLED
     Serial.print(f);
 #endif
-#ifndef RFLINK_SERIAL2NET_DISABLED
-    RFLink::Serial2Net::broadcastMessage(String(f).c_str());
-#endif // !RFLINK_SERIAL2NET_DISABLED
     char numberBuf[24];
     dtostrf(f, 0, 2, numberBuf);
     appendRawMqttText(numberBuf);
@@ -368,9 +333,6 @@ namespace RFLink {
 #ifdef SERIAL_ENABLED
       Serial.write(c);
 #endif
-#ifndef RFLINK_SERIAL2NET_DISABLED
-      RFLink::Serial2Net::broadcastMessage(c);
-#endif // !RFLINK_SERIAL2NET_DISABLED
       appendRawMqttChar(c);
     }
 
@@ -380,11 +342,6 @@ namespace RFLink {
       if(end_of_line)
         Serial.println();
       #endif
-      #ifndef RFLINK_SERIAL2NET_DISABLED
-      RFLink::Serial2Net::broadcastMessage(buf);
-      if(end_of_line)
-        RFLink::Serial2Net::broadcastMessage(F("\r\n"));
-      #endif // !RFLINK_SERIAL2NET_DISABLED
       appendRawMqttFlashText(buf, end_of_line);
     };
 

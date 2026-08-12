@@ -5,21 +5,22 @@ This repository is a Sonoff RF Bridge focused build of
 
 It is not a general RFLink32 board-support fork. It is meant for the ESP8285
 Sonoff RF Bridge, especially modified bridges using RFLink raw send/receive
-over serial, MQTT, or Serial2Net.
+over MQTT.
 
 ## What This Build Changes
 
 - Adds configurable long-command buffers:
   - `RFLINK_MQTT_BUFFER_SIZE=1600`
-  - `RFLINK_SERIAL2NET_BUFFER_SIZE=1600`
   - `RFLINK_SERIAL_RX_BUFFER_SIZE=1600`
 - Defaults the `sonoff_bridge` environment for the ESP8285 Sonoff RF Bridge.
 - Uses hardcoded RF Bridge radio pins to save space.
-- Defaults Serial2Net and async signal mode on.
+- Defaults async signal mode on.
 - Provides a lighter embedded web UI that fits the constrained device better.
 - Adds captive-portal handling for first setup from the device AP.
-- Publishes raw RF debug/capture output over MQTT as well as Serial2Net/serial.
+- Publishes raw RF debug/capture output over MQTT.
 - Fixes Wi-Fi form handling so disabled checkboxes, including AP enable, persist.
+- Removes Serial2Net from this Sonoff RF Bridge build; MQTT is the network command and capture path.
+- Publishes retained Home Assistant MQTT discovery for the bridge reboot button.
 - Reports the hardware profile as `RFLink32 - Sonoff RF Bridge`.
 
 ## What This Build Does Not Include
@@ -38,9 +39,9 @@ The latest built firmware is published on the GitHub releases page:
 
 [Releases](https://github.com/Wheemer/RFLink32-Sonoff-RF-Bridge/releases)
 
-The first release asset is:
+The current local build artifact is:
 
-`sonoff_bridge-rflink32-custom-ui-captive-p6-buffer1600-mqtt-raw-capture.bin`
+`sonoff_bridge-rflink32-mqtt-raw-capture-no-serial2net.bin`
 
 ## Build
 
@@ -64,9 +65,8 @@ The build flags for this target include:
 -D RFLINK_WIFI_ENABLED
 -D RFLINK_NO_RADIOLIB_SUPPORT
 -D RFLINK_MQTT_BUFFER_SIZE=1600
--D RFLINK_SERIAL2NET_BUFFER_SIZE=1600
 -D RFLINK_SERIAL_RX_BUFFER_SIZE=1600
--D RFLINK_BUILDNAME='"Sonoff_custom_ui_captive_p6_buffer1600"'
+-D RFLINK_BUILDNAME='"Sonoff_mqtt_raw_capture_no_serial2net"'
 -D RFLINK_HARDWARE_NAME='"RFLink32 - Sonoff RF Bridge"'
 -D RFLINK_USE_HARDCODED_RADIO_PINS_ONLY
 ```
@@ -84,10 +84,23 @@ Default web credentials are inherited from RFLink32:
 - username: `rflink32`
 - password: `433mhz`
 
+## Home Assistant
+
+This repo also includes the custom Home Assistant integration:
+
+```text
+custom_components/rf_bridge_to_mqtt
+```
+
+The integration is named `RF Bridge to MQTT`. It creates configurable command
+buttons and services that publish RFLink command lines to the bridge MQTT
+command topic. Configure the MQTT topics and command library from the integration
+flow/options.
+
 ## Command Transport
 
 This build keeps the RFLink32 command protocol and increases the transport
-buffers so long raw RF payloads can survive MQTT, Serial2Net, and serial RX.
+buffers so long raw RF payloads can survive MQTT and serial RX.
 It also routes `RFDEBUG` and `RFUDEBUG` raw receive output to the configured
 MQTT output topic, so MQTT-only installs can capture raw waveforms.
 

@@ -1,0 +1,45 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "RF Bridge to MQTT",
+        "description": "Configure an RF Bridge to MQTT device and optional command library. Commands must be JSON: {\"key\": {\"name\": \"Name\", \"command\": \"10;signal;sendRF;...\", \"icon\": \"mdi:remote\"}}.",
+        "data": {
+          "name": "Name",
+          "topic_in": "Command topic",
+          "topic_out": "Message topic",
+          "topic_lwt": "Availability topic",
+          "commands": "Command library JSON"
+        }
+      }
+    },
+    "error": {
+      "invalid_commands": "The command library JSON is invalid."
+    },
+    "abort": {
+      "already_configured": "This RFLink32 bridge is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "RF Bridge to MQTT options",
+        "description": "Edit MQTT topics and command library JSON.",
+        "data": {
+          "topic_in": "Command topic",
+          "topic_out": "Message topic",
+          "topic_lwt": "Availability topic",
+          "commands": "Command library JSON"
+        }
+      }
+    },
+    "error": {
+      "invalid_commands": "The command library JSON is invalid."
+    }
+  },
+  "exceptions": {
+    "unknown_command": {
+      "message": "Unknown RFLink32 command key: {command_key}"
+    }
+  }
+}

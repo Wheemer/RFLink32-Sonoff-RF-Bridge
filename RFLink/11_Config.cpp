@@ -11,7 +11,6 @@
 #include "1_Radio.h"
 #include "2_Signal.h"
 #include "6_MQTT.h"
-#include "9_Serial2Net.h"
 #include "10_Wifi.h"
 #include "12_Portal.h"
 
@@ -40,7 +39,6 @@ namespace RFLink
             "portal",
             "signal",
             "radio",
-            "serial2net",
             "root" // this is always the last one and matches index SectionId::EOF_id
     };
 
@@ -54,7 +52,6 @@ namespace RFLink
             #ifndef RFLINK_MQTT_DISABLED
             &RFLink::Mqtt::configItems[0],
             #endif // RFLINK_MQTT_DISABLED
-            &RFLink::Serial2Net::configItems[0],
             #ifndef RFLINK_PORTAL_DISABLED
             &RFLink::Portal::configItems[0],
             #endif // RFLINK_PORTAL_DISABLED

@@ -7,7 +7,6 @@
 #include "10_Wifi.h"
 #include "2_Signal.h"
 #include "6_MQTT.h"
-#include "9_Serial2Net.h"
 #include <time.h> // for NTP
 #ifdef ESP32
 extern "C" {
@@ -466,8 +465,6 @@ namespace RFLink { namespace Wifi {
           if(RFLink::Mqtt::params::enabled)
             RFLink::Mqtt::reconnect(1, true);
           #endif // RFLINK_MQTT_DISABLED
-          if(RFLink::Serial2Net::params::enabled)
-            RFLink::Serial2Net::restartServer();
         }
 
 #ifdef ESP32

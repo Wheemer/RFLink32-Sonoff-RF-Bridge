@@ -8,7 +8,6 @@
 
 #include "2_Signal.h"
 #include "6_MQTT.h"
-#include "9_Serial2Net.h"
 #include "11_Config.h"
 #include "12_Portal.h"
 #include "10_Wifi.h"
@@ -449,7 +448,6 @@ namespace RFLink { namespace Portal {
           RFLink::Mqtt::getStatusJsonString(obj);
           #endif
           RFLink::Signal::getStatusJsonString(obj);
-          RFLink::Serial2Net::getStatusJsonString(obj);
 
           String uptime = formatUptime(obj[F("uptime")].as<unsigned long>());
           String swVersion = jsonStringOr(obj[F("sw_version")], F("unknown"));
@@ -462,8 +460,6 @@ namespace RFLink { namespace Portal {
           String wifiClientNetmask = jsonStringOr(obj[F("network")][F("wifi_client")][F("netmask")], F(""));
           String wifiClientDns = jsonStringOr(obj[F("network")][F("wifi_client")][F("dns")], F(""));
           String wifiApStatus = jsonStringOr(obj[F("network")][F("wifi_ap")][F("status")], F("disabled"));
-          String serialStatus = jsonStringOr(obj[F("serial2net")][F("status")], F("disabled"));
-          String serialClients = jsonStringOr(obj[F("serial2net")][F("clients_count")], F("0"));
           output.clear();
 
           AsyncResponseStream *response = request->beginResponseStream(F("text/html; charset=utf-8"));
@@ -484,9 +480,6 @@ namespace RFLink { namespace Portal {
           writeStatusValueRow(response, F("DNS"), wifiClientDns);
           response->print(F("<tr><td rowspan='2' class='category'>Wifi Access Point</td></tr>"));
           writeStatusValueRow(response, F("Status"), wifiApStatus, wifiApStatus);
-          response->print(F("<tr><td rowspan='3' class='category'>Serial2Net</td></tr>"));
-          writeStatusValueRow(response, F("Status"), serialStatus, serialStatus);
-          writeStatusValueRow(response, F("Client count"), serialClients);
           response->print(F("</table></div><div class='container' style='min-width:33%'><h2 style='margin:5px 0'>Controls</h2><form method='post' action='/reboot' data-async-reboot='1'><button class='btn-red btn-big' type='submit'>REBOOT</button></form></div></div>"));
           writePageTail(response);
           sendStream(request, response, F("Home"));
@@ -603,18 +596,6 @@ namespace RFLink { namespace Portal {
           mqtt[F("topic_out")] = formString(request, F("topic_out"));
           mqtt[F("lwt_enabled")] = formBool(request, F("lwt_enabled"));
           mqtt[F("topic_lwt")] = formString(request, F("topic_lwt"));
-          pushConfigAndReply(request, root, F("/services"));
-        }
-
-        void serveSerialPost(AsyncWebServerRequest *request) {
-          if(!checkHttpAuthentication(request))
-            return;
-
-          StaticJsonDocument<192> input;
-          JsonObject root = input.to<JsonObject>();
-          JsonObject serial = root.createNestedObject(F("serial2net"));
-          serial[F("enabled")] = formBool(request, F("enabled"));
-          serial[F("port")] = formLong(request, F("port"), 1900);
           pushConfigAndReply(request, root, F("/services"));
         }
 
@@ -812,14 +793,7 @@ namespace RFLink { namespace Portal {
           writeFieldRowStart(response, F("LWT topic"));
           writeTextInput(response, F(""), F("topic_lwt"), cfgString("topic_lwt", Config::SectionId::MQTT_id));
           writeFieldRowEnd(response);
-          response->print(F("</table><input type='submit' class='btn-green' value='Save MQTT'></form></div><div class='container'><h2 style='margin:5px 0'>Serial2Net</h2><form method='post' action='/serial' data-async-save='1'><table>"));
-          writeFieldRowStart(response, F("Enable serial TCP"));
-          writeCheckbox(response, F(""), F("enabled"), cfgBool("enabled", Config::SectionId::Serial2Net_id));
-          writeFieldRowEnd(response);
-          writeFieldRowStart(response, F("Port"));
-          writeNumberInput(response, F(""), F("port"), cfgLong("port", Config::SectionId::Serial2Net_id));
-          writeFieldRowEnd(response);
-          response->print(F("</table><input type='submit' class='btn-green' value='Save Serial2Net'></form></div>"));
+          response->print(F("</table><input type='submit' class='btn-green' value='Save MQTT'></form></div>"));
           writePageTail(response);
           sendStream(request, response, F("Services"));
         }
@@ -854,7 +828,6 @@ namespace RFLink { namespace Portal {
           RFLink::Mqtt::getStatusJsonString(obj);
           #endif // RFLINK_MQTT_DISABLED
           RFLink::Signal::getStatusJsonString(obj);
-          RFLink::Serial2Net::getStatusJsonString(obj);
 
           String buffer;
           if(!buffer.reserve(512) ) {
@@ -999,11 +972,9 @@ namespace RFLink { namespace Portal {
           server.on(PSTR("/services"), HTTP_GET, serveServicesPage);
           server.on(PSTR("/portal"), HTTP_GET, serveServicesRedirect);
           server.on(PSTR("/portal"), HTTP_POST, servePortalPost);
-          // Portal, MQTT, and Serial2Net are edited from Services; keep old GET URLs as aliases.
+          // Portal and MQTT are edited from Services; keep old GET URLs as aliases.
           server.on(PSTR("/mqtt"), HTTP_GET, serveServicesRedirect);
           server.on(PSTR("/mqtt"), HTTP_POST, serveMqttPost);
-          server.on(PSTR("/serial"), HTTP_GET, serveServicesRedirect);
-          server.on(PSTR("/serial"), HTTP_POST, serveSerialPost);
           server.on(PSTR("/signal"), HTTP_GET, serveSignalPage);
           server.on(PSTR("/signal"), HTTP_POST, serveSignalPost);
           server.on(PSTR("/advanced"), HTTP_GET, serveAdvancedPage);

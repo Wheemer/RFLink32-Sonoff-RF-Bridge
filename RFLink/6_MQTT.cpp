@@ -131,6 +131,7 @@ Config::ConfigItem configItems[] =  {
 PubSubClient MQTTClient; // MQTTClient(WIFIClient);
 
 void callback(char *, byte *, unsigned int);
+void publishHomeAssistantDiscovery();
 
 void paramsUpdatedCallback() {
   refreshParametersFromConfig();
@@ -245,8 +246,18 @@ void setup_MQTT()
 
 void callback(char *topic, byte *payload, unsigned int length)
 {
-  payload[length] = 0;
-  CheckMQTT(payload);
+  char command[RFLINK_MQTT_BUFFER_SIZE];
+  unsigned int copyLength = min(length, (unsigned int) sizeof(command) - 1);
+  memcpy(command, payload, copyLength);
+  command[copyLength] = 0;
+
+  if(strcmp_P(topic, PSTR("homeassistant/status")) == 0) {
+    if(strcmp_P(command, PSTR("online")) == 0)
+      publishHomeAssistantDiscovery();
+    return;
+  }
+
+  CheckMQTT((byte *) command);
 }
 
 
@@ -314,6 +325,7 @@ void reconnect(int retryCount, bool force)
               MQTTClient.publish((params::topic_lwt).c_str(), "Online", true);
         #endif // ESP
       }
+      publishHomeAssistantDiscovery();
     }
     else
     {
@@ -328,14 +340,55 @@ void publishMsg()
   if(!params::enabled)
     return;
 
+  static boolean MQTT_RETAINED = MQTT_RETAINED_0;
+
+  if(!MQTTClient.connected())
+    reconnect(1);
+
   if(!MQTTClient.connected())
     return;
 
-  static boolean MQTT_RETAINED = MQTT_RETAINED_0;
-
-  if (!MQTTClient.connected())
-    reconnect(1);
   MQTTClient.publish(params::topic_out.c_str(), pbuffer, MQTT_RETAINED);
+  MQTTClient.loop();
+  yield();
+}
+
+void publishHomeAssistantDiscovery()
+{
+  if(!params::enabled || !MQTTClient.connected())
+    return;
+
+  String mac = WiFi.macAddress();
+  mac.replace(":", "");
+  mac.toLowerCase();
+
+  String configTopic;
+  configTopic.reserve(96);
+  configTopic = F("homeassistant/button/rflink32_");
+  configTopic += mac;
+  configTopic += F("/reboot/config");
+
+  String payload;
+  if(!payload.reserve(768))
+    return;
+  payload = F("{\"name\":\"Reboot\",\"unique_id\":\"rflink32_");
+  payload += mac;
+  payload += F("_reboot\",\"command_topic\":\"");
+  payload += params::topic_in;
+  payload += F("\",\"payload_press\":\"10;REBOOT;\",\"availability_topic\":\"");
+  payload += params::topic_lwt;
+  payload += F("\",\"payload_available\":\"Online\",\"payload_not_available\":\"Offline\",\"entity_category\":\"diagnostic\",\"device\":{\"identifiers\":[\"rflink32_");
+  payload += mac;
+  payload += F("\"],\"name\":\"RFLink32 - Sonoff RF Bridge\",\"manufacturer\":\"RFLink32\",\"model\":\"Sonoff RF Bridge\",\"sw_version\":\"");
+  payload += F("5.3 ");
+  payload += F(RFLINK_BUILDNAME);
+  payload += F("\",\"hw_version\":\"");
+  payload += F(RFLINK_HARDWARE_NAME);
+  payload += F("\"}}");
+
+  MQTTClient.publish(configTopic.c_str(), payload.c_str(), true);
+  MQTTClient.loop();
+  yield();
 }
 
 void publishRawMsg(const char *message)
@@ -344,9 +397,14 @@ void publishRawMsg(const char *message)
     return;
 
   if(!MQTTClient.connected())
+    reconnect(1);
+
+  if(!MQTTClient.connected())
     return;
 
   MQTTClient.publish(params::topic_out.c_str(), message, false);
+  MQTTClient.loop();
+  yield();
 }
 
 void checkMQTTloop()
@@ -459,6 +517,7 @@ void checkMQTTloop()
     {
       // Once connected, resubscribe
       MQTTClient.subscribe(params::topic_in.c_str());
+      MQTTClient.subscribe(PSTR("homeassistant/status"));
       bResub = false;
       delay(10);
     }
