@@ -92,6 +92,8 @@ namespace RFLink {
       RfEventRecord rfEventQueue[RFLINK_RF_EVENT_QUEUE_SIZE];
       uint32_t rfEventSequence = 0;
       uint8_t rfEventWriteIndex = 0;
+      bool rawRfLearningArmed = false;
+      unsigned long rawRfLearningExpiresAt = 0;
 
       bool isRfEventMessage(const char *message)
       {
@@ -321,6 +323,11 @@ namespace RFLink {
       return rfEventSequence;
     }
 
+    void armRawRfLearning(unsigned int seconds) {
+      rawRfLearningArmed = true;
+      rawRfLearningExpiresAt = millis() + ((unsigned long) seconds * 1000UL);
+    }
+
     void recordRawRfEvent(
       int number,
       byte repeat,
@@ -330,6 +337,12 @@ namespace RFLink {
       float rssi,
       const uint16_t *pulses
     ) {
+      if(!rawRfLearningArmed)
+        return;
+      if(rawRfLearningExpiresAt != 0 && (long)(millis() - rawRfLearningExpiresAt) >= 0) {
+        rawRfLearningArmed = false;
+        return;
+      }
       if(number <= 0 || pulses == nullptr)
         return;
 
@@ -385,6 +398,9 @@ namespace RFLink {
       rfEventWriteIndex++;
       if(rfEventWriteIndex >= RFLINK_RF_EVENT_QUEUE_SIZE)
         rfEventWriteIndex = 0;
+
+      rawRfLearningArmed = false;
+      rawRfLearningExpiresAt = 0;
     }
 
     void appendRfEventsJson(JsonArray output, uint32_t since, uint8_t limit) {
@@ -683,6 +699,7 @@ namespace RFLink {
       output["sw_version"] = buffer;
       output["hardware"] = F(RFLINK_HARDWARE_NAME);
       output["rf_event_cursor"] = getRfEventCursor();
+      output["raw_learning_armed"] = rawRfLearningArmed;
     }
 
 }

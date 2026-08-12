@@ -109,6 +109,7 @@ namespace RFLink {
     //void sendRawPrintf_P(PGM_P, ...);
 
     void getStatusJsonString(JsonObject &output);
+    void armRawRfLearning(unsigned int seconds);
     void recordRawRfEvent(
       int number,
       byte repeat,

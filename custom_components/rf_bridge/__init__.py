@@ -147,6 +147,33 @@ class RFBridgeHub:
         cursor = status.get("rf_event_cursor")
         if isinstance(cursor, int):
             self.rf_event_cursor = cursor
+        session = async_get_clientsession(self.hass)
+        try:
+            async with session.post(
+                f"{self.base_url}/api/learn",
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                text = await response.text()
+                if response.status >= 400:
+                    self.last_success = False
+                    self.last_error = (
+                        f"HTTP {response.status} {response.reason}: {text}"
+                    )
+                    self.async_write_diagnostics()
+                    raise ServiceValidationError(
+                        f"RF Bridge learn failed for {self.host}: "
+                        f"{self.last_error}"
+                    )
+                data = await response.json(content_type=None)
+                if isinstance(data, dict) and isinstance(data.get("cursor"), int):
+                    self.rf_event_cursor = data["cursor"]
+        except (aiohttp.ClientError, TimeoutError, OSError) as err:
+            self.last_success = False
+            self.last_error = str(err)
+            self.async_write_diagnostics()
+            raise ServiceValidationError(
+                f"RF Bridge learn failed for {self.host}: {err}"
+            ) from err
         self.last_rf_event = None
         self.last_command_key = "learn_next_rf_event"
         self.last_command = None

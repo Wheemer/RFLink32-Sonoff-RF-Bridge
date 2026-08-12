@@ -451,6 +451,21 @@ namespace RFLink { namespace Portal {
           request->send(200, F("application/json"), buffer);
         }
 
+        void serveApiLearn(AsyncWebServerRequest *request) {
+          if(!checkHttpAuthentication(request))
+            return;
+
+          RFLink::armRawRfLearning(30);
+          DynamicJsonDocument output(160);
+          JsonObject root = output.to<JsonObject>();
+          root[F("success")] = true;
+          root[F("cursor")] = RFLink::getRfEventCursor();
+          root[F("raw_learning_armed")] = true;
+          String buffer;
+          serializeJson(output, buffer);
+          request->send(200, F("application/json"), buffer);
+        }
+
         void serveApiReboot(AsyncWebServerRequest *request) {
           if(!checkHttpAuthentication(request))
             return;
@@ -529,6 +544,8 @@ namespace RFLink { namespace Portal {
 
           apiServer.on(PSTR("/api/status"), HTTP_GET, serveApiStatusGet);
           apiServer.on(PSTR("/api/events"), HTTP_GET, serveApiEventsGet);
+          apiServer.on(PSTR("/api/learn"), HTTP_GET, serveApiLearn);
+          apiServer.on(PSTR("/api/learn"), HTTP_POST, serveApiLearn);
           apiServer.on(PSTR("/api/reboot"), HTTP_GET, serveApiReboot);
           apiServer.on(PSTR("/reboot"), HTTP_POST, serveApiReboot);
           apiServer.onNotFound([](AsyncWebServerRequest *request) {

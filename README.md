@@ -49,11 +49,11 @@ The latest built firmware is published on the GitHub releases page:
 
 The current local build artifact is:
 
-`sonoff_bridge-rflink32-local-api-5.3-raw-learn.bin`
+`sonoff_bridge-rflink32-local-api-5.3-learn-armed.bin`
 
 Current verified SHA256:
 
-`6c41c26b72411add168b39288dc67da3542be2babbb31e4043491f6fdfb580b4`
+`73bec8ddef9b80f8084be7c9dad51071a6fe0150172f39508e76cc1772816ff0`
 
 ## Build
 
@@ -158,10 +158,13 @@ through an `event` entity named `RF event`. The `Learn next RF event` button
 advances the cursor to the current queue head so the next physical 433 MHz press
 is easy to identify.
 
-If RFLink cannot decode a received signal, the firmware still emits a raw event.
-When the raw pulse list fits the command buffer, the event includes a replayable
+When `Learn next RF event` is pressed, the integration arms a short raw-learning
+window on the bridge. If RFLink cannot decode the next received signal, the
+firmware emits one raw event and then disarms raw learning. When the raw pulse
+list fits the command buffer, the event includes a replayable
 `10;signal;sendRF;...` command in the `command` field so unsupported 433 MHz
-buttons can still be learned and saved from Home Assistant.
+buttons can still be learned and saved from Home Assistant without flooding
+Home Assistant with ambient RF noise.
 
 ## Upstream
 
