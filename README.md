@@ -21,6 +21,10 @@ over MQTT.
 - Fixes Wi-Fi form handling so disabled checkboxes, including AP enable, persist.
 - Removes Serial2Net from this Sonoff RF Bridge build; MQTT is the network command and capture path.
 - Publishes retained Home Assistant MQTT discovery for the bridge reboot button.
+- Publishes retained `rflink32/<mac>/discovery` metadata for the bundled
+  `RF Bridge to MQTT` Home Assistant integration.
+- Automatically shuts down the setup AP after client Wi-Fi successfully receives
+  an IP address.
 - Reports the hardware profile as `RFLink32 - Sonoff RF Bridge`.
 
 ## What This Build Does Not Include
@@ -41,7 +45,7 @@ The latest built firmware is published on the GitHub releases page:
 
 The current local build artifact is:
 
-`sonoff_bridge-rflink32-mqtt-raw-capture-no-serial2net.bin`
+`sonoff_bridge-rflink32-mqtt-auto-discovery-no-serial2net.bin`
 
 ## Build
 
@@ -92,10 +96,11 @@ This repo also includes the custom Home Assistant integration:
 custom_components/rf_bridge_to_mqtt
 ```
 
-The integration is named `RF Bridge to MQTT`. It creates configurable command
-buttons and services that publish RFLink command lines to the bridge MQTT
-command topic. Configure the MQTT topics and command library from the integration
-flow/options.
+The integration is named `RF Bridge to MQTT`. It can be discovered from the
+firmware's retained MQTT metadata once the bridge is connected to MQTT. It also
+creates configurable command buttons and services that publish RFLink command
+lines to the bridge MQTT command topic. Configure command buttons from the
+integration options.
 
 ## Command Transport
 

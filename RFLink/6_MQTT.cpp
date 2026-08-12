@@ -387,6 +387,26 @@ void publishHomeAssistantDiscovery()
   payload += F("\"}}");
 
   MQTTClient.publish(configTopic.c_str(), payload.c_str(), true);
+
+  configTopic = F("rflink32/");
+  configTopic += mac;
+  configTopic += F("/discovery");
+
+  payload = F("{\"name\":\"RFLink32 - Sonoff RF Bridge\",\"identifiers\":[\"rflink32_");
+  payload += mac;
+  payload += F("\"],\"manufacturer\":\"RFLink32\",\"model\":\"Sonoff RF Bridge\",\"sw_version\":\"5.3 ");
+  payload += F(RFLINK_BUILDNAME);
+  payload += F("\",\"hw_version\":\"");
+  payload += F(RFLINK_HARDWARE_NAME);
+  payload += F("\",\"topic_in\":\"");
+  payload += params::topic_in;
+  payload += F("\",\"topic_out\":\"");
+  payload += params::topic_out;
+  payload += F("\",\"topic_lwt\":\"");
+  payload += params::topic_lwt;
+  payload += F("\",\"payload_available\":\"Online\",\"payload_not_available\":\"Offline\"}");
+
+  MQTTClient.publish(configTopic.c_str(), payload.c_str(), true);
   MQTTClient.loop();
   yield();
 }

@@ -518,6 +518,12 @@ WiFiEventHandler e2;
 void eventHandler_WiFiStationGotIp(const WiFiEventStationModeGotIP& evt) {
   Serial.printf_P(PSTR("WiFi Client has received a new IP: %s\r\n"), WiFi.localIP().toString().c_str());
   Serial.flush();
+  if((WiFi.getMode() & WIFI_AP) != 0) {
+    Serial.println(F("WiFi client is connected; shutting down setup AP"));
+    stopAccessPoint();
+    WiFi.enableAP(false);
+    params::AP_enabled = false;
+  }
   reconnectServices();
 }
 WiFiEventHandler e3;
@@ -646,7 +652,7 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
 
           auto && wifi_ap = network.createNestedObject(F("wifi_ap"));
 
-          if(params::AP_enabled) {
+          if((WiFi.getMode() & WIFI_AP) != 0) {
             wifi_ap[F("status")] = F("enabled");
           } else {
             wifi_ap[F("status")] = F("disabled");

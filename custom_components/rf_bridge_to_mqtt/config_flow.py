@@ -8,10 +8,14 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.service_info.mqtt import MqttServiceInfo
 
 from . import parse_commands
 from .const import (
     CONF_COMMANDS,
+    CONF_IDENTIFIERS,
+    CONF_NAME,
+    CONF_SW_VERSION,
     CONF_TOPIC_IN,
     CONF_TOPIC_LWT,
     CONF_TOPIC_OUT,
@@ -37,8 +41,67 @@ def _commands_from_text(text: str) -> dict[str, Any]:
     return data
 
 
+def _payload_to_dict(payload: str | bytes | bytearray | None) -> dict[str, Any]:
+    if isinstance(payload, (bytes, bytearray)):
+        payload = payload.decode("utf-8")
+    if not isinstance(payload, str) or not payload.strip():
+        raise ValueError("Empty discovery payload")
+    data = json.loads(payload)
+    if not isinstance(data, dict):
+        raise ValueError("Discovery payload must be an object")
+    return data
+
+
+def _first_identifier(data: dict[str, Any]) -> str:
+    identifiers = data.get(CONF_IDENTIFIERS)
+    if isinstance(identifiers, list) and identifiers:
+        identifier = identifiers[0]
+    else:
+        identifier = data.get(CONF_TOPIC_IN)
+    if not isinstance(identifier, str) or not identifier:
+        raise ValueError("Discovery payload is missing an identifier")
+    return identifier
+
+
 class RFBridgeToMqttConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
+
+    async def async_step_mqtt(
+        self, discovery_info: MqttServiceInfo
+    ) -> config_entries.ConfigFlowResult:
+        try:
+            data = _payload_to_dict(discovery_info.payload)
+            unique_id = _first_identifier(data)
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return self.async_abort(reason="invalid_discovery")
+
+        await self.async_set_unique_id(unique_id)
+        self._abort_if_unique_id_configured(
+            updates={
+                CONF_TOPIC_IN: data.get(CONF_TOPIC_IN, DEFAULT_TOPIC_IN),
+                CONF_TOPIC_OUT: data.get(CONF_TOPIC_OUT, DEFAULT_TOPIC_OUT),
+                CONF_TOPIC_LWT: data.get(CONF_TOPIC_LWT, DEFAULT_TOPIC_LWT),
+                CONF_SW_VERSION: data.get(CONF_SW_VERSION),
+            }
+        )
+
+        return self.async_create_entry(
+            title=data.get(CONF_NAME) or "RF Bridge to MQTT",
+            data={
+                CONF_IDENTIFIERS: data.get(CONF_IDENTIFIERS, [unique_id]),
+                CONF_NAME: data.get(CONF_NAME) or "RF Bridge to MQTT",
+                CONF_TOPIC_IN: data.get(CONF_TOPIC_IN, DEFAULT_TOPIC_IN),
+                CONF_TOPIC_OUT: data.get(CONF_TOPIC_OUT, DEFAULT_TOPIC_OUT),
+                CONF_TOPIC_LWT: data.get(CONF_TOPIC_LWT, DEFAULT_TOPIC_LWT),
+                CONF_SW_VERSION: data.get(CONF_SW_VERSION),
+            },
+            options={
+                CONF_TOPIC_IN: data.get(CONF_TOPIC_IN, DEFAULT_TOPIC_IN),
+                CONF_TOPIC_OUT: data.get(CONF_TOPIC_OUT, DEFAULT_TOPIC_OUT),
+                CONF_TOPIC_LWT: data.get(CONF_TOPIC_LWT, DEFAULT_TOPIC_LWT),
+                CONF_COMMANDS: {},
+            },
+        )
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None

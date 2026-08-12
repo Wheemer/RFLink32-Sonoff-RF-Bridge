@@ -17,7 +17,8 @@
       "invalid_commands": "The command library JSON is invalid."
     },
     "abort": {
-      "already_configured": "This RFLink32 bridge is already configured."
+      "already_configured": "This RFLink32 bridge is already configured.",
+      "invalid_discovery": "The RF Bridge to MQTT discovery payload is invalid."
     }
   },
   "options": {
