@@ -35,9 +35,13 @@ def main() -> None:
 
     require(api, "#define RFLINK_API_PORT 8080")
     require(wifi, "bool stationGotIpPending = false;")
+    require(wifi, "bool stationDisconnectedPending = false;")
     require(wifi, "void processStationGotIp()")
+    require(wifi, "void processStationDisconnected()")
     if wifi.read_text(encoding="utf-8").count("stationGotIpPending = true;") != 2:
         raise SystemExit("Both WiFi got-IP callbacks must defer work to the main loop")
+    if wifi.read_text(encoding="utf-8").count("stationDisconnectedPending = true;") != 2:
+        raise SystemExit("Both WiFi disconnect callbacks must defer work to the main loop")
 
     for call in (
         "void delayLongPulse(unsigned long duration_us)",

@@ -63,6 +63,7 @@ namespace RFLink { namespace Wifi {
         bool mdnsStartAfterSetupAccessPointShutdown = false;
         bool setupAccessPointShutdownRequested = false;
         bool stationGotIpPending = false;
+        bool stationDisconnectedPending = false;
         unsigned long setupAccessPointClientConnectedAt = 0;
         const unsigned long SETUP_AP_SHUTDOWN_GRACE_MS = 1000;
         const int MAX_WIFI_SCAN_CACHE = 4;
@@ -622,6 +623,14 @@ namespace RFLink { namespace Wifi {
           reconnectServices();
         }
 
+        void processStationDisconnected() {
+          if(!stationDisconnectedPending)
+            return;
+
+          stationDisconnectedPending = false;
+          stopMdnsDiscovery();
+        }
+
         void startMdnsDiscovery() {
           if(!WiFi.isConnected() || mdnsStarted)
             return;
@@ -686,7 +695,7 @@ namespace RFLink { namespace Wifi {
 
         void eventHandler_WiFiStationLostIp(WiFiEvent_t event, WiFiEventInfo_t info) {
           Serial.println("WiFi Client has lost its IP");
-          stopMdnsDiscovery();
+          stationDisconnectedPending = true;
         }
 #endif //ESP32
 
@@ -714,7 +723,7 @@ void eventHandler_WiFiStationGotIp(const WiFiEventStationModeGotIP& evt) {
 WiFiEventHandler e3;
 void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected& evt) {
   Serial.println(F("WiFi Client has been disconnected"));
-  stopMdnsDiscovery();
+  stationDisconnectedPending = true;
 }
 #endif
 
@@ -761,6 +770,7 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
         }
 
         void mainLoop() {
+          processStationDisconnected();
           processStationGotIp();
 #if defined(ESP8266) || defined(ESP32)
           if(mdnsStartAfterSetupAccessPointShutdown && WiFi.isConnected() && (WiFi.getMode() & WIFI_AP) == 0) {
