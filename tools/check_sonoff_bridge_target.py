@@ -38,6 +38,8 @@ def main() -> None:
         "void delayLongPulse(unsigned long duration_us)",
         "delayLongPulse(high_us);",
         "delayLongPulse(low_us);",
+        "uint64_t estimated_us = 0;",
+        "if(estimated_ms > 120000ULL)",
     ):
         require(signal, call)
 

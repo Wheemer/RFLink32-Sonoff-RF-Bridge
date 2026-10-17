@@ -1193,18 +1193,19 @@ namespace RFLink
       signal.Repeats = repeat;
       signal.Delay = delay;
 
-      unsigned long estimated_us = 0;
+      uint64_t estimated_us = 0;
       for(int i = 1; i <= signal.Number; i++)
-        estimated_us += (unsigned long)signal.Pulses[i] * signal.Multiply;
-      runtime::txLastEstimatedMs = ((estimated_us / 1000UL) * ((unsigned long)signal.Repeats + 1UL)) +
-        ((unsigned long)signal.Delay * (unsigned long)signal.Repeats);
+        estimated_us += (uint64_t)signal.Pulses[i] * signal.Multiply;
+      uint64_t estimated_ms = (estimated_us / 1000ULL) * ((uint64_t)signal.Repeats + 1ULL) +
+        ((uint64_t)signal.Delay * (uint64_t)signal.Repeats);
 
-      if(runtime::txLastEstimatedMs > 120000UL) {
-        Serial.printf_P(PSTR("error, estimated transmit time %lu ms is too long\r\n"), runtime::txLastEstimatedMs);
+      if(estimated_ms > 120000ULL) {
+        Serial.printf_P(PSTR("error, estimated transmit time is too long\r\n"));
         setTxLastError("estimated tx too long");
         runtime::txFailedCount++;
         return false;
       }
+      runtime::txLastEstimatedMs = (unsigned long)estimated_ms;
 
       return true;
 
