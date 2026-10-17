@@ -20,6 +20,7 @@ def main() -> None:
     display = ROOT / "RFLink" / "4_Display.cpp"
     websocket = ROOT / "RFLink" / "12_Portal_ws.cpp"
     wifi = ROOT / "RFLink" / "10_Wifi.cpp"
+    core = ROOT / "RFLink" / "RFLink.cpp"
 
     for setting in (
         "[env:sonoff_bridge]",
@@ -73,6 +74,11 @@ def main() -> None:
         require(display, setting)
 
     require(websocket, "activeJob.type == WsJobType::Command &&\n                   activeJob.clientId == client->id()")
+    require(websocket, "RFLink::resetReasonText(")
+    if "ESP.getResetReason()" in websocket.read_text(encoding="utf-8"):
+        raise SystemExit("WebSocket command telemetry must not allocate reset-reason Strings")
+    require(core, "const __FlashStringHelper *resetReasonText(uint32_t reason)")
+    require(core, "const rst_info *resetInfo = ESP.getResetInfoPtr();")
 
 
 if __name__ == "__main__":
