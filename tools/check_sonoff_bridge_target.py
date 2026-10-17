@@ -18,6 +18,7 @@ def main() -> None:
     api = ROOT / "RFLink" / "RFLink.h"
     signal = ROOT / "RFLink" / "2_Signal.cpp"
     display = ROOT / "RFLink" / "4_Display.cpp"
+    websocket = ROOT / "RFLink" / "12_Portal_ws.cpp"
     wifi = ROOT / "RFLink" / "10_Wifi.cpp"
 
     for setting in (
@@ -70,6 +71,8 @@ def main() -> None:
         "pbuffer[0] = 0;\n  displayMessageOverflowed = false;",
     ):
         require(display, setting)
+
+    require(websocket, "activeJob.type == WsJobType::Command &&\n                   activeJob.clientId == client->id()")
 
 
 if __name__ == "__main__":

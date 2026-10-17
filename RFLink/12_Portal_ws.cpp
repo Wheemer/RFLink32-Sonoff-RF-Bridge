@@ -468,10 +468,20 @@ namespace RFLink { namespace Portal {
               return;
             }
             if(type == WS_EVT_DISCONNECT) {
-              if(client != nullptr && wsInboundActive && wsInboundClientId == client->id()) {
-                wsInboundActive = false;
-                wsInboundClientId = 0;
-                activeJob.command[0] = 0;
+              if(client != nullptr) {
+                if(wsInboundActive && wsInboundClientId == client->id()) {
+                  wsInboundActive = false;
+                  wsInboundClientId = 0;
+                  activeJob.command[0] = 0;
+                }
+                // Commands are deferred to the cooperative loop. If their
+                // caller has gone away before that loop begins execution,
+                // never transmit an obsolete RF action later.
+                if(jobInProgress && activeJob.type == WsJobType::Command &&
+                   activeJob.clientId == client->id()) {
+                  activeJob = WsJob{};
+                  jobInProgress = false;
+                }
               }
               return;
             }
