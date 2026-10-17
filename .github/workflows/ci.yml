@@ -29,7 +29,8 @@ jobs:
         run: |
           python tools/check_api_only_transport.py
           python tools/check_listener_topology.py
-          ruff check custom_components/rf_bridge/update.py tools/check_api_only_transport.py tools/check_listener_topology.py tools/check_sonoff_bridge_ota_layout.py tools/package_sonoff_bridge_update.py tools/validate_ota_layout.py
+          python tools/check_sonoff_bridge_target.py
+          ruff check custom_components/rf_bridge/update.py tools/check_api_only_transport.py tools/check_listener_topology.py tools/check_sonoff_bridge_ota_layout.py tools/check_sonoff_bridge_target.py tools/package_sonoff_bridge_update.py tools/validate_ota_layout.py
           python -m compileall -q custom_components/rf_bridge tools
           python - <<'PY'
           import json
