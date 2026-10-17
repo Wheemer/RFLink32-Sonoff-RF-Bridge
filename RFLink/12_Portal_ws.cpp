@@ -36,10 +36,12 @@ namespace RFLink { namespace Portal {
           bool jobInProgress = false;
 
           static char wsOutbound[2300];
-          static char wsInbound[INPUT_COMMAND_SIZE + 128];
           static bool wsInboundActive = false;
           static uint32_t wsInboundClientId = 0;
-          static StaticJsonDocument<INPUT_COMMAND_SIZE + 384> wsMessageDoc;
+          // Incoming WebSocket JSON is parsed in-place in activeJob.command.
+          // Only the object metadata needs ArduinoJson storage; keeping a
+          // second 2 KB receive buffer here starved TCP allocations.
+          static StaticJsonDocument<512> wsMessageDoc;
           static StaticJsonDocument<1280> wsStatusDoc;
 
           bool appendJsonText(char *&cursor, size_t &remaining, const char *text) {
@@ -177,6 +179,64 @@ namespace RFLink { namespace Portal {
               appendJsonText(cursor, remaining, "}}");
           }
 
+          bool buildRawRfEventJson(uint32_t sequence, unsigned long eventMillis,
+                                   int pulseCount, byte repeat, byte delay,
+                                   byte multiply, int rssi, bool pulseCountTrimmed,
+                                   const uint16_t *pulses, bool includeCommand) {
+            char message[64];
+            snprintf_P(
+              message,
+              sizeof(message),
+              PSTR("20;XX;RAW;Pulses=%i;RSSI=%i;"),
+              pulseCount,
+              rssi
+            );
+
+            char *cursor = wsOutbound;
+            size_t remaining = sizeof(wsOutbound);
+            bool truncated = pulseCountTrimmed || pulseCount < 2 || !includeCommand;
+
+            if(!(appendJsonText(cursor, remaining, "{\"type\":\"rf_event\",\"event\":{\"sequence\":") &&
+                 appendJsonNumber(cursor, remaining, sequence) &&
+                 appendJsonText(cursor, remaining, ",\"millis\":") &&
+                 appendJsonNumber(cursor, remaining, eventMillis) &&
+                 appendJsonText(cursor, remaining, ",\"message\":") &&
+                 appendJsonEscaped(cursor, remaining, message) &&
+                 appendJsonText(cursor, remaining, ",\"raw\":true,\"pulse_count\":") &&
+                 appendJsonSignedNumber(cursor, remaining, pulseCount) &&
+                 appendJsonText(cursor, remaining, ",\"rssi\":") &&
+                 appendJsonSignedNumber(cursor, remaining, rssi) &&
+                 appendJsonText(cursor, remaining, ",\"truncated\":") &&
+                 appendJsonText(cursor, remaining, truncated ? "true" : "false")))
+              return false;
+
+            if(!includeCommand)
+              return appendJsonText(cursor, remaining, ",\"command_omitted\":true}}");
+
+            if(!(appendJsonText(cursor, remaining, ",\"command\":\"10;signal;sendRF;{\\\"repeat\\\":") &&
+                 appendJsonNumber(cursor, remaining, repeat) &&
+                 appendJsonText(cursor, remaining, ",\\\"delay\\\":") &&
+                 appendJsonNumber(cursor, remaining, delay) &&
+                 appendJsonText(cursor, remaining, ",\\\"pulses\\\":[")))
+              return false;
+
+            int commandPulseCount = pulseCount - (pulseCount % 2);
+            for(int index = 1; index <= commandPulseCount; index++) {
+              if((index & 0x1F) == 0) {
+                yield();
+                ESP.wdtFeed();
+              }
+              unsigned long pulseUs = (unsigned long)pulses[index] *
+                (unsigned long)(multiply == 0 ? 1 : multiply);
+              if(!(appendJsonText(cursor, remaining, index == 1 ? "" : ",") &&
+                   appendJsonNumber(cursor, remaining, pulseUs)))
+                return false;
+            }
+
+            return appendJsonText(cursor, remaining, "]}\"") &&
+              appendJsonText(cursor, remaining, "}}");
+          }
+
           void wsSendHello(AsyncWebSocketClient *client) {
             wsStatusDoc.clear();
             JsonObject root = wsStatusDoc.to<JsonObject>();
@@ -275,7 +335,7 @@ namespace RFLink { namespace Portal {
             jobInProgress = false;
           }
 
-          void wsHandleMessage(AsyncWebSocketClient *client, uint8_t *data, size_t len) {
+          void wsHandleMessage(AsyncWebSocketClient *client, char *data, size_t len) {
             if(client == nullptr || data == nullptr || len == 0)
               return;
 
@@ -327,12 +387,13 @@ namespace RFLink { namespace Portal {
                   return;
                 }
               }
-              activeJob = WsJob{};
+              memmove(activeJob.command, command, commandLength + 1);
               activeJob.clientId = client->id();
               activeJob.requestId = requestId;
               activeJob.type = WsJobType::Command;
-              strncpy(activeJob.command, command, sizeof(activeJob.command) - 1);
-              activeJob.command[sizeof(activeJob.command) - 1] = 0;
+              activeJob.learnSeconds = 30;
+              activeJob.ok = false;
+              activeJob.elapsedMs = 0;
               jobInProgress = true;
               return;
             }
@@ -342,11 +403,12 @@ namespace RFLink { namespace Portal {
                 wsSendError(client, requestId, F("Bridge busy"));
                 return;
               }
+              unsigned int learnSeconds = root[F("seconds")] | 30;
               activeJob = WsJob{};
               activeJob.clientId = client->id();
               activeJob.requestId = requestId;
               activeJob.type = WsJobType::Learn;
-              activeJob.learnSeconds = root[F("seconds")] | 30;
+              activeJob.learnSeconds = learnSeconds;
               if(activeJob.learnSeconds == 0)
                 activeJob.learnSeconds = 30;
               jobInProgress = true;
@@ -403,7 +465,7 @@ namespace RFLink { namespace Portal {
               if(client != nullptr && wsInboundActive && wsInboundClientId == client->id()) {
                 wsInboundActive = false;
                 wsInboundClientId = 0;
-                wsInbound[0] = 0;
+                activeJob.command[0] = 0;
               }
               return;
             }
@@ -414,27 +476,31 @@ namespace RFLink { namespace Portal {
               if(info->index == 0) {
                 if(info->opcode != WS_TEXT)
                   return;
+                if(jobInProgress || wsInboundActive) {
+                  wsSendError(client, 0, F("Bridge busy"));
+                  return;
+                }
                 wsInboundActive = true;
                 wsInboundClientId = client->id();
-                wsInbound[0] = 0;
+                activeJob.command[0] = 0;
               } else if(!wsInboundActive || wsInboundClientId != client->id()) {
                 wsSendError(client, 0, F("Unexpected WebSocket continuation"));
                 return;
               }
-              if(info->index + len >= sizeof(wsInbound)) {
+              if(info->index + len >= sizeof(activeJob.command)) {
                 wsInboundActive = false;
                 wsInboundClientId = 0;
-                wsInbound[0] = 0;
+                activeJob.command[0] = 0;
                 wsSendError(client, 0, F("WebSocket message too long"));
                 return;
               }
-              memcpy(wsInbound + info->index, data, len);
-              wsInbound[info->index + len] = 0;
+              memcpy(activeJob.command + info->index, data, len);
+              activeJob.command[info->index + len] = 0;
               if(!info->final)
                 return;
               wsInboundActive = false;
               wsInboundClientId = 0;
-              wsHandleMessage(client, (uint8_t *)wsInbound, info->index + len);
+              wsHandleMessage(client, activeJob.command, info->index + len);
               return;
             }
             if(type == WS_EVT_ERROR) {
@@ -490,6 +556,23 @@ namespace RFLink { namespace Portal {
                                  true, command, false))
               return;
           }
+          apiWebSocket.textAll(wsOutbound);
+        }
+
+        void broadcastRawRfEvent(uint32_t sequence, unsigned long eventMillis,
+                                 int pulseCount, byte repeat, byte delay,
+                                 byte multiply, int rssi, bool pulseCountTrimmed,
+                                 const uint16_t *pulses) {
+          if(apiWebSocket.count() == 0 || pulses == nullptr)
+            return;
+
+          bool canIncludeCommand = pulseCount >= 2;
+          if(!((canIncludeCommand && buildRawRfEventJson(sequence, eventMillis, pulseCount,
+                                                          repeat, delay, multiply, rssi,
+                                                          pulseCountTrimmed, pulses, true)) ||
+               buildRawRfEventJson(sequence, eventMillis, pulseCount, repeat, delay,
+                                   multiply, rssi, true, pulses, false)))
+            return;
           apiWebSocket.textAll(wsOutbound);
         }
 

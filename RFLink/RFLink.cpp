@@ -66,30 +66,7 @@ namespace RFLink {
 #define RFLINK_RAW_MQTT_BUFFER_SIZE 1500
 #endif
 
-#ifndef RFLINK_RF_EVENT_MESSAGE_SIZE
-#define RFLINK_RF_EVENT_MESSAGE_SIZE 220
-#endif
-
-#ifndef RFLINK_RF_EVENT_COMMAND_SIZE
-#define RFLINK_RF_EVENT_COMMAND_SIZE 1800
-#endif
-
     namespace {
-      struct RfEventRecord {
-        uint32_t sequence = 0;
-        unsigned long millis = 0;
-        char message[RFLINK_RF_EVENT_MESSAGE_SIZE] = {0};
-        char command[RFLINK_RF_EVENT_COMMAND_SIZE] = {0};
-        bool raw = false;
-        int pulseCount = 0;
-        int rssi = 0;
-        bool truncated = false;
-      };
-
-      // The Home Assistant protocol receives RF events immediately over its
-      // persistent connection. Retaining four full raw commands consumed over
-      // 8 KB of scarce ESP8285 RAM without any reader for that queue.
-      RfEventRecord rfEventScratch;
       uint32_t rfEventSequence = 0;
       bool rawRfLearningArmed = false;
       unsigned long rawRfLearningExpiresAt = 0;
@@ -104,22 +81,11 @@ namespace RFLink {
         if(!isRfEventMessage(message))
           return;
 
-        RfEventRecord &record = rfEventScratch;
-        record.sequence = ++rfEventSequence;
-        record.millis = millis();
-        strncpy(record.message, message, sizeof(record.message) - 1);
-        record.message[sizeof(record.message) - 1] = 0;
-        record.command[0] = 0;
-        record.raw = false;
-        record.pulseCount = 0;
-        record.rssi = 0;
-        record.truncated = false;
-
 #ifndef RFLINK_PORTAL_DISABLED
         RFLink::Portal::broadcastRfEvent(
-          record.sequence,
-          record.millis,
-          record.message,
+          ++rfEventSequence,
+          millis(),
+          message,
           false,
           0,
           0,
@@ -375,89 +341,25 @@ namespace RFLink {
       if(number <= 0 || pulses == nullptr)
         return;
 
-      RfEventRecord &record = rfEventScratch;
-      record.sequence = ++rfEventSequence;
-      record.millis = millis();
-      record.raw = true;
-      record.pulseCount = number;
-      record.rssi = (int) rssi;
-      record.truncated = false;
-      snprintf_P(
-        record.message,
-        sizeof(record.message),
-        PSTR("20;XX;RAW;Pulses=%i;RSSI=%i;"),
-        number,
-        (int) rssi
-      );
-
-      int commandPulseCount = number;
-      bool commandWasTrimmed = false;
-      if((commandPulseCount % 2) != 0) {
-        commandPulseCount--;
-        commandWasTrimmed = true;
-      }
-      if(commandPulseCount < 2)
-        record.truncated = true;
-
-      int headerLength = snprintf_P(
-        record.command,
-        sizeof(record.command),
-        PSTR("10;signal;sendRF;{\"repeat\":%u,\"delay\":%u,\"pulses\":["),
-        repeat,
-        delay
-      );
-      size_t offset = 0;
-      if(headerLength < 0 || (size_t)headerLength >= sizeof(record.command) - 3) {
-        record.command[0] = 0;
-        record.truncated = true;
-      } else {
-        offset = (size_t)headerLength;
-      }
-
-      for(int index = 1; !record.truncated && index <= commandPulseCount; index++) {
-        if((index & 0x1F) == 0) {
-          yield();
-          ESP.wdtFeed();
-        }
-        unsigned long pulse_us = (unsigned long)pulses[index] * (unsigned long)(multiply == 0 ? 1 : multiply);
-        int written = snprintf_P(
-          record.command + offset,
-          sizeof(record.command) - offset,
-          index == 1 ? PSTR("%lu") : PSTR(",%lu"),
-          pulse_us
-        );
-        if(written < 0 || offset + (size_t) written >= sizeof(record.command) - 3) {
-          record.truncated = true;
-          break;
-        }
-        offset += written;
-      }
-
-      if(record.truncated) {
-        record.command[0] = 0;
-      } else if(offset < sizeof(record.command) - 3) {
-        record.command[offset++] = ']';
-        record.command[offset++] = '}';
-        record.command[offset] = 0;
-        record.truncated = commandWasTrimmed;
-      } else {
-        record.command[0] = 0;
-        record.truncated = true;
+      bool pulseCountTrimmed = false;
+      if((number % 2) != 0) {
+        pulseCountTrimmed = true;
       }
 
       rawRfLearningArmed = false;
       rawRfLearningExpiresAt = 0;
 
 #ifndef RFLINK_PORTAL_DISABLED
-      RFLink::Portal::broadcastRfEvent(
-        record.sequence,
-        record.millis,
-        record.message,
-        true,
-        record.pulseCount,
-        record.rssi,
-        record.truncated,
-        record.command[0] != 0 ? record.command : nullptr
+      RFLink::Portal::broadcastRawRfEvent(
+        ++rfEventSequence,
+        millis(),
+        number,
+        repeat,
+        delay,
+        multiply,
+        (int) rssi,
+        pulseCountTrimmed,
+        pulses
       );
 #endif
     }

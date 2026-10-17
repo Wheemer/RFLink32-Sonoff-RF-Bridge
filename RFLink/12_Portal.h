@@ -40,6 +40,17 @@ namespace RFLink {
           bool truncated,
           const char *command
         );
+        void broadcastRawRfEvent(
+          uint32_t sequence,
+          unsigned long eventMillis,
+          int pulseCount,
+          byte repeat,
+          byte delay,
+          byte multiply,
+          int rssi,
+          bool pulseCountTrimmed,
+          const uint16_t *pulses
+        );
         void cleanupWebSocketClients();
         void closeWebSocketClients();
     }
