@@ -141,7 +141,9 @@ namespace RFLink { namespace Portal {
           }
 
           void wsSendJsonToClient(AsyncWebSocketClient *client, JsonDocument &doc) {
-            if(client == nullptr || !client->canSend())
+            // Avoid serializing into a transient WebSocket buffer when the
+            // client is disconnected or its queue is already full.
+            if(client == nullptr || !apiWebSocket.availableForWrite(client->id()))
               return;
             size_t length = serializeJson(doc, wsOutbound, sizeof(wsOutbound) - 1);
             if(length == 0)
