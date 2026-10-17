@@ -131,7 +131,9 @@ namespace RFLink { namespace Portal {
           #ifdef ESP8266
             root[F("heap_frag")] = ESP.getHeapFragmentation();
             root[F("free_block_max_size")] = ESP.getMaxFreeBlockSize();
-            root[F("reset_reason")] = ESP.getResetReason();
+            root[F("reset_reason")] = RFLink::resetReasonText(
+              ESP.getResetInfoPtr()->reason
+            );
           #endif
           #ifdef ESP32
             root[F("heap_min_free")] = ESP.getMinFreeHeap();

@@ -120,6 +120,9 @@ namespace RFLink {
 
     void markRebootSource(RebootSource source);
     const char *lastRequestedRebootSource();
+#if defined(ESP8266)
+    const __FlashStringHelper *resetReasonText(uint32_t reason);
+#endif
     void scheduleReboot(unsigned int seconds, RebootSource source = RebootSource::Unknown);
 
     namespace UpdateSecurity {
