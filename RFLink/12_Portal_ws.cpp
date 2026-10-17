@@ -142,16 +142,16 @@ namespace RFLink { namespace Portal {
           #endif
           }
 
-          void wsSendJsonToClient(AsyncWebSocketClient *client, JsonDocument &doc) {
+          bool wsSendJsonToClient(AsyncWebSocketClient *client, JsonDocument &doc) {
             // Avoid serializing into a transient WebSocket buffer when the
             // client is disconnected or its queue is already full.
             if(client == nullptr || !apiWebSocket.availableForWrite(client->id()))
-              return;
+              return false;
             size_t length = serializeJson(doc, wsOutbound, sizeof(wsOutbound) - 1);
             if(length == 0)
-              return;
+              return false;
             wsOutbound[length] = 0;
-            client->text(wsOutbound);
+            return client->text(wsOutbound);
           }
 
           bool buildRfEventJson(uint32_t sequence, unsigned long eventMillis,
@@ -334,7 +334,8 @@ namespace RFLink { namespace Portal {
               }
             }
 
-            wsSendJsonToClient(client, wsStatusDoc);
+            if(!wsSendJsonToClient(client, wsStatusDoc))
+              Serial.println(F("WebSocket job result delivery failed"));
             activeJob.type = WsJobType::None;
             jobInProgress = false;
           }
