@@ -56,7 +56,7 @@ jobs:
       - name: Validate OTA layout
         run: python tools/validate_ota_layout.py .pio/build/sonoff_bridge/firmware.bin
 
-      - name: Upload serial bootstrap artifact
+      - name: Upload RF Bridge firmware artifact
         uses: actions/upload-artifact@v4
         with:
           name: modified-sonoff-rf-bridge-firmware
