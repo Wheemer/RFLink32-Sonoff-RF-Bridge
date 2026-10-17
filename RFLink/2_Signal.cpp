@@ -977,15 +977,15 @@ namespace RFLink
       interrupts();
     }
 
-    void delayLongLowGap(unsigned long duration_us)
+    void delayLongPulse(unsigned long duration_us)
     {
       if(duration_us <= 5000UL) {
         delayMicroseconds(duration_us);
         return;
       }
 
-      // Long raw-code spaces can be 80-110ms. Holding interrupts off for that
-      // entire LOW gap starves ESP8266 Wi-Fi/watchdog and can reboot the bridge.
+      // Long raw-code marks or spaces can be 80-110ms. Holding interrupts off
+      // for either level starves ESP8266 Wi-Fi/watchdog and can reboot the bridge.
       interrupts();
       while(duration_us >= 1000UL) {
         unsigned long chunk = duration_us > 16000UL ? 16000UL : duration_us;
@@ -1024,9 +1024,9 @@ namespace RFLink
           unsigned long high_us = (unsigned long)signal->Pulses[x++] * signal->Multiply;
           unsigned long low_us = (unsigned long)signal->Pulses[x++] * signal->Multiply;
           digitalWrite(Radio::pins::TX_DATA, HIGH);
-          delayMicroseconds(high_us);
+          delayLongPulse(high_us);
           digitalWrite(Radio::pins::TX_DATA, LOW);
-          delayLongLowGap(low_us);
+          delayLongPulse(low_us);
         }
         interrupts();
         if (y != signal->Repeats)

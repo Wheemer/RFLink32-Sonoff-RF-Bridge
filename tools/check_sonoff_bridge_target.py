@@ -16,6 +16,7 @@ def main() -> None:
     platformio = ROOT / "platformio.ini"
     radio = ROOT / "RFLink" / "1_Radio.h"
     api = ROOT / "RFLink" / "RFLink.h"
+    signal = ROOT / "RFLink" / "2_Signal.cpp"
 
     for setting in (
         "[env:sonoff_bridge]",
@@ -32,6 +33,13 @@ def main() -> None:
         require(radio, setting)
 
     require(api, "#define RFLINK_API_PORT 8080")
+
+    for call in (
+        "void delayLongPulse(unsigned long duration_us)",
+        "delayLongPulse(high_us);",
+        "delayLongPulse(low_us);",
+    ):
+        require(signal, call)
 
 
 if __name__ == "__main__":
