@@ -138,7 +138,8 @@ Once we have the 3 decoded bytes we can then process them.
 
 Use the methods from `4_Display.h` to send the messages to the listening endpoints.
 
-> Never use `Serial.WriteLn` as this will only output to the console and not to MQTT or Ser2Net.
+> Never use `Serial.WriteLn` for decoded messages; use the display helpers so
+> connected API clients receive the complete event.
 
 Using the `display_XX` methods is the only way to make sure the decoded information is properly sent. And it also takes care of the message counter that appears as the second element on the output string.
 

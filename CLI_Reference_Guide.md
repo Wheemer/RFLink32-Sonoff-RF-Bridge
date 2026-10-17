@@ -74,19 +74,6 @@ Reference:
 | portal  | auth_enabled        | Boolean      | Config Portal login authentication                                                                  |
 | portal  | auth_user           | String       | The Config Portal user name                                                                         |
 | portal  | auth_password       | String       | The Config Portal password                                                                          |
-| mqtt    | enabled             | Boolean      | Use MQTT (MQ Telemetry Transport) protocol                                                          |
-| mqtt    | server              | IP Address   | The IP Address of the MQTT server                                                                   |
-| mqtt    | port                | Number       | The port number of the MQTT server *[default 1883]*                                                 |
-| mqtt    | id                  | String       | The client id to report to the MQTT server                                                          |
-| mqtt    | user                | String       | The user name to authenticate with the MQTT server                                                  |
-| mqtt    | password            | String       | The password to authenticate with the MQTT server                                                   |
-| mqtt    | topic_in            | String       | The MQTT topic for received transmissions __*Will be the root path if using Separate Topics*__      |
-| mqtt    | topic_out           | String       | The MQTT topic for sending a transmission                                                           |
-| mqtt    | topic_lwt           | String       | The Last Will and Testament MQTT topic                                                              |
-| mqtt    | lwt_enabled         | Boolean      | Enables the Last Will and Testament feature                                                         |
-| mqtt    | ssl_enabled         | Boolean      | Use TLS encryption for the MQTT connection                                                          |
-| mqtt    | ssl_insecure        | Boolean      | Ignore validating the MQTT server certificate                                                       |
-| mqtt    | ca_cert             | String       | The PEM/DER Certificate Authority Certificate file contents __*When SSL Insecure is disabled*__     |
 | wifi    | client_enabled      | Boolean      | Connect to a wireless network                                                                       |
 | wifi    | client_dhcp_enabled | Boolean      | Use DHCP on the wireless network to configure the network interface                                 |
 | wifi    | client_ssid         | String       | The wireless network SSID                                                                           |
@@ -102,8 +89,6 @@ Reference:
 | wifi    | ap_ip               | IP Address   | The address of the device on the AP network                                                         |
 | wifi    | ap_network          | IP Address   | The AP network ID                                                                                   |
 | wifi    | ap_mask             | Network Mask | The AP network mask                                                                                 |
-| ser2net | enabled             | Boolean      | Use Serial2Net protocol                                                                             |
-| ser2net | port                | Number       | Set the Serial2Net port number *[default 1900]*                                                     |
 | signal  | sample_rate         | Number       |                                                                                                     |
 | signal  | min_raw_pulses      | Number       | The minimum number of bits needed to be received before spending CPU time on decoding the signal    |
 | signal  | seek_timeout        | Number       | After this time (in milliseconds) the signal will be considered absent                              |
@@ -134,18 +119,6 @@ JSON Output:
     "auth_enabled": true,
     "auth_user": "rflink32",
     "auth_password": "433mhz"
-  },
-  "mqtt": {
-    "enabled": false,
-    "server": "192.168.1.74",
-    "port": 1883,
-    "id": "ESP8266-RFLink_xxx",
-    "user": "xxx",
-    "password": "xxx",
-    "topic_in": "/ESP00/cmd",
-    "topic_out": "/ESP00/msg",
-    "topic_lwt": "/ESP00/lwt",
-    "lwt_enabled": true
   },
   "wifi": {
     "client_enabled": false,
