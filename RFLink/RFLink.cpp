@@ -619,7 +619,7 @@ namespace RFLink {
 
     void getStatusJsonString(JsonObject &output) {
 
-      struct timeval now;
+      struct timeval now = {};
 
       #ifdef ESP8266
       // Little Patch to get the right boot time when connected to wifi ... Bug ?
@@ -630,9 +630,10 @@ namespace RFLink {
 
       if (gettimeofday(&now, NULL) != 0) {
         RFLink::sendRawPrint(F("Failed to obtain time"));
+        output["uptime"] = 0;
+      } else {
+        output["uptime"] = now.tv_sec - timeAtBoot.tv_sec;
       }
-
-      output["uptime"] = now.tv_sec - timeAtBoot.tv_sec;
 
       output["heap_free"] = ESP.getFreeHeap();
       #ifdef ESP32
