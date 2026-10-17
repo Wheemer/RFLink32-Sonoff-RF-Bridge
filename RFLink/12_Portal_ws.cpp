@@ -538,7 +538,7 @@ namespace RFLink { namespace Portal {
             RFLink::armRawRfLearning(activeJob.learnSeconds);
             activeJob.ok = true;
           } else if(activeJob.type == WsJobType::Reboot) {
-            RFLink::scheduleReboot(5);
+            RFLink::scheduleReboot(5, RFLink::RebootSource::ApiRequest);
             activeJob.ok = true;
           } else if(activeJob.type == WsJobType::Update) {
             activeJob.ok = true;

@@ -126,7 +126,16 @@ namespace RFLink {
     );
     uint32_t getRfEventCursor();
 
-    void scheduleReboot(unsigned int seconds);
+    enum class RebootSource : uint8_t {
+      Unknown = 0,
+      LegacyCommand,
+      ApiRequest,
+      SignedUpdate,
+    };
+
+    void markRebootSource(RebootSource source);
+    const char *lastRequestedRebootSource();
+    void scheduleReboot(unsigned int seconds, RebootSource source = RebootSource::Unknown);
 
     namespace UpdateSecurity {
       void setup();

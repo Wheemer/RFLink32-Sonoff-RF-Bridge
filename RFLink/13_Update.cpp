@@ -205,6 +205,7 @@ namespace RFLink::UpdateSecurity {
       Serial.println(updateLastError);
       return;
     }
+    RFLink::markRebootSource(RFLink::RebootSource::SignedUpdate);
     ESP.restart();
   }
 

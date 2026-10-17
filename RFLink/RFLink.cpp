@@ -43,6 +43,7 @@ void sendMsgFromBuffer(); // See at bottom
 void CallReboot(void) {
   RFLink::sendMsgFromBuffer();
   delay(1);
+  RFLink::markRebootSource(RFLink::RebootSource::LegacyCommand);
   ESP.restart();
 }
 
@@ -56,6 +57,7 @@ namespace RFLink {
 
     struct timeval timeAtBoot;
     unsigned long scheduledRebootAt = 0;
+    RebootSource scheduledRebootSource = RebootSource::Unknown;
     char printBuf[300];
 
 #ifndef RFLINK_SERIAL_RX_BUFFER_SIZE
@@ -67,6 +69,50 @@ namespace RFLink {
 #endif
 
     namespace {
+#if defined(ESP8266)
+      // RTC user memory survives a software restart without writing flash. The
+      // ESP8266 OTA implementation reserves blocks 0-31, so use its final two
+      // blocks (496-503) for this 8-byte diagnostic breadcrumb.
+      constexpr uint32_t REBOOT_BREADCRUMB_MAGIC = 0x52464252UL;
+      constexpr uint32_t REBOOT_BREADCRUMB_RTC_BLOCK = 124;
+
+      struct alignas(4) RebootBreadcrumb {
+        uint32_t magic;
+        uint32_t source;
+      };
+
+      static_assert(sizeof(RebootBreadcrumb) == 8, "RTC reboot breadcrumb size");
+
+      RebootSource rebootSourceAtBoot = RebootSource::Unknown;
+
+      void loadRebootSourceAtBoot() {
+        RebootBreadcrumb breadcrumb = {0, 0};
+        if (ESP.rtcUserMemoryRead(
+              REBOOT_BREADCRUMB_RTC_BLOCK,
+              reinterpret_cast<uint32_t *>(&breadcrumb),
+              sizeof(breadcrumb)
+            ) && breadcrumb.magic == REBOOT_BREADCRUMB_MAGIC) {
+          switch (static_cast<RebootSource>(breadcrumb.source)) {
+            case RebootSource::LegacyCommand:
+            case RebootSource::ApiRequest:
+            case RebootSource::SignedUpdate:
+              rebootSourceAtBoot = static_cast<RebootSource>(breadcrumb.source);
+              break;
+            case RebootSource::Unknown:
+            default:
+              break;
+          }
+        }
+
+        RebootBreadcrumb cleared = {0, 0};
+        ESP.rtcUserMemoryWrite(
+          REBOOT_BREADCRUMB_RTC_BLOCK,
+          reinterpret_cast<uint32_t *>(&cleared),
+          sizeof(cleared)
+        );
+      }
+#endif
+
       uint32_t rfEventSequence = 0;
       bool rawRfLearningArmed = false;
       unsigned long rawRfLearningExpiresAt = 0;
@@ -166,6 +212,10 @@ namespace RFLink {
       Serial.setTimeout(1);
 
       Serial.begin(BAUD); // Initialise the serial port
+
+#if defined(ESP8266)
+      loadRebootSourceAtBoot();
+#endif
 
       RFLink::UpdateSecurity::setup();
 
@@ -278,6 +328,7 @@ namespace RFLink {
       if (scheduledRebootAt != 0 &&
           (long)(millis() - scheduledRebootAt) >= 0) {
         Serial.println(F("***** Rebooting now for scheduled reboot !!! *****"));
+        markRebootSource(scheduledRebootSource);
         ESP.restart();
       }
 
@@ -581,8 +632,43 @@ namespace RFLink {
       return commandAccepted;
     }
 
-    void scheduleReboot(unsigned int seconds) {
+    void markRebootSource(RebootSource source) {
+#if defined(ESP8266)
+      RebootBreadcrumb breadcrumb = {
+        REBOOT_BREADCRUMB_MAGIC,
+        static_cast<uint32_t>(source),
+      };
+      ESP.rtcUserMemoryWrite(
+        REBOOT_BREADCRUMB_RTC_BLOCK,
+        reinterpret_cast<uint32_t *>(&breadcrumb),
+        sizeof(breadcrumb)
+      );
+#else
+      (void)source;
+#endif
+    }
+
+    const char *lastRequestedRebootSource() {
+#if defined(ESP8266)
+      switch (rebootSourceAtBoot) {
+        case RebootSource::LegacyCommand:
+          return "legacy_command";
+        case RebootSource::ApiRequest:
+          return "api_request";
+        case RebootSource::SignedUpdate:
+          return "signed_update";
+        case RebootSource::Unknown:
+        default:
+          return "unknown";
+      }
+#else
+      return "unknown";
+#endif
+    }
+
+    void scheduleReboot(unsigned int seconds, RebootSource source) {
       scheduledRebootAt = millis() + ((unsigned long)seconds * 1000UL);
+      scheduledRebootSource = source;
     }
 
     void getStatusJsonString(JsonObject &output) {
@@ -614,8 +700,13 @@ namespace RFLink {
       // Why the chip last reset. On an exception/WDT this carries the crash
       // cause (and getResetInfo() the EPC/exception details) so a headless
       // client can diagnose a reboot without a serial console.
-      output["reset_reason"] = ESP.getResetReason();
+      const String resetReason = ESP.getResetReason();
+      output["reset_reason"] = resetReason;
       output["reset_info"] = ESP.getResetInfo();
+      output["last_requested_reboot_source"] =
+        resetReason == F("Software/System restart")
+          ? lastRequestedRebootSource()
+          : "unknown";
 #endif
 #ifdef ESP32
       output["reset_reason"] = (int) esp_reset_reason();
