@@ -28,11 +28,22 @@ namespace RFLink { namespace Portal {
           bool enabled = true;
         }
 
+        class ApiWebServer : public AsyncWebServer {
+          public:
+            explicit ApiWebServer(uint16_t port) : AsyncWebServer(port) {}
+
+            bool isListening() {
+              return _server.status() != 0;
+            }
+        };
+
         AsyncWebServer setupServer(80);
-        AsyncWebServer apiServer(RFLINK_API_PORT);
+        ApiWebServer apiServer(RFLINK_API_PORT);
         bool setupServerStarted = false;
         bool apiServerStarted = false;
         bool apiServerRestartPending = false;
+        unsigned long apiServerRetryAt = 0;
+        constexpr unsigned long API_SERVER_RETRY_MS = 2000;
         void serveWifiSetupPage(AsyncWebServerRequest *request);
         bool requestIsFromAccessPoint(AsyncWebServerRequest *request);
         bool checkPageAuthentication(AsyncWebServerRequest *request);
@@ -324,8 +335,10 @@ namespace RFLink { namespace Portal {
         }
 
         void start() {
-          if(WiFi.isConnected())
+          if(WiFi.isConnected()) {
             apiServerRestartPending = true;
+            apiServerRetryAt = 0;
+          }
           if(params::enabled && (WiFi.getMode() & WIFI_AP) != 0)
             startSetupServer();
         }
@@ -333,6 +346,7 @@ namespace RFLink { namespace Portal {
         void stop() {
           stopSetupServer();
           apiServerRestartPending = false;
+          apiServerRetryAt = 0;
           if(apiServerStarted) {
             Serial.print(F("Stopping API server... "));
             apiServer.end();
@@ -345,23 +359,35 @@ namespace RFLink { namespace Portal {
           // ESPAsyncWebServer owns TCP state. Do not call end()/begin() from
           // the ESP8266 Wi-Fi event callback; defer it to the cooperative loop.
           apiServerRestartPending = true;
+          apiServerRetryAt = 0;
         }
 
         void maintainApiServer() {
           if(!apiServerRestartPending || !WiFi.isConnected())
+            return;
+          if(apiServerRetryAt != 0 &&
+             (long)(millis() - apiServerRetryAt) < 0)
             return;
 
           if(apiServerStarted) {
             Serial.print(F("Restarting API server after WiFi IP change... "));
             closeWebSocketClients();
             apiServer.end();
+            apiServerStarted = false;
           } else {
             Serial.print(F("Starting API server after WiFi IP assignment... "));
           }
 
           apiServer.begin();
+          if(!apiServer.isListening()) {
+            apiServerRetryAt = millis() + API_SERVER_RETRY_MS;
+            Serial.println(F("FAILED; retrying"));
+            return;
+          }
+
           apiServerStarted = true;
           apiServerRestartPending = false;
+          apiServerRetryAt = 0;
           Serial.println(F("OK"));
         }
 
