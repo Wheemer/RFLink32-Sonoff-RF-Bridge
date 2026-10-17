@@ -17,6 +17,7 @@ def main() -> None:
     radio = ROOT / "RFLink" / "1_Radio.h"
     api = ROOT / "RFLink" / "RFLink.h"
     signal = ROOT / "RFLink" / "2_Signal.cpp"
+    wifi = ROOT / "RFLink" / "10_Wifi.cpp"
 
     for setting in (
         "[env:sonoff_bridge]",
@@ -33,6 +34,10 @@ def main() -> None:
         require(radio, setting)
 
     require(api, "#define RFLINK_API_PORT 8080")
+    require(wifi, "bool stationGotIpPending = false;")
+    require(wifi, "void processStationGotIp()")
+    if wifi.read_text(encoding="utf-8").count("stationGotIpPending = true;") != 2:
+        raise SystemExit("Both WiFi got-IP callbacks must defer work to the main loop")
 
     for call in (
         "void delayLongPulse(unsigned long duration_us)",
