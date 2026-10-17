@@ -439,7 +439,6 @@ namespace RFLink { namespace Wifi {
         void requestSetupAccessPointShutdown() {
           setupAccessPointShutdownRequested = true;
           setupAccessPointClientConnectedAt = 0;
-          clientParamsHaveChanged = true;
         }
 
 
