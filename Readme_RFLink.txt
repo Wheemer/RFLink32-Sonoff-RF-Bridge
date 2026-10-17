@@ -30,9 +30,6 @@ In all other cases:
   When you want to update the firmware of the Arduino, remove the capacitor and reconnect it when done.   
   For details about the Domoticz Synology package check out: http://www.jadahl.com  
 ------------------------
-RFlink via Network Connection:   
-It is possible to use RFlink via a network connection using ser2net.   
-------------------------   
 You can now use the RFLink Gateway with the following home automation software:   
 Domoticz   
 Jeedom   
