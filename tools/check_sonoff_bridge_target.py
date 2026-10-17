@@ -17,6 +17,7 @@ def main() -> None:
     radio = ROOT / "RFLink" / "1_Radio.h"
     api = ROOT / "RFLink" / "RFLink.h"
     signal = ROOT / "RFLink" / "2_Signal.cpp"
+    display = ROOT / "RFLink" / "4_Display.cpp"
     wifi = ROOT / "RFLink" / "10_Wifi.cpp"
 
     for setting in (
@@ -59,6 +60,16 @@ def main() -> None:
 
     if "static unsigned long lastChangedState_us" in signal.read_text(encoding="utf-8"):
         raise SystemExit("Async scanner must reset the timestamp used by its ISR")
+
+    display_source = display.read_text(encoding="utf-8")
+    if "strcat(pbuffer" in display_source:
+        raise SystemExit("Display output must not append to pbuffer without bounds")
+    for setting in (
+        "static void appendToPrintBuffer(const char *input)",
+        "displayMessageOverflowed = true;",
+        "pbuffer[0] = 0;\n  displayMessageOverflowed = false;",
+    ):
+        require(display, setting)
 
 
 if __name__ == "__main__":
