@@ -367,6 +367,18 @@ namespace RFLink { namespace Portal {
         }
 
         void maintainApiServer() {
+          // A TCP listener can disappear after an SDK-level network restart while
+          // the station remains associated. Do not wait for another Got-IP event
+          // that may never arrive before recreating the API listener.
+          if(apiServerStarted && !apiServer.isListening()) {
+            Serial.println(F("API listener stopped; scheduling restart"));
+            closeWebSocketClients();
+            apiServer.end();
+            apiServerStarted = false;
+            apiServerRestartPending = true;
+            apiServerRetryAt = 0;
+          }
+
           if(!apiServerRestartPending || !WiFi.isConnected())
             return;
           if(apiServerRetryAt != 0 &&
