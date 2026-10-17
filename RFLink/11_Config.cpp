@@ -10,7 +10,6 @@
 
 #include "1_Radio.h"
 #include "2_Signal.h"
-#include "6_MQTT.h"
 #include "10_Wifi.h"
 #include "12_Portal.h"
 
@@ -35,7 +34,6 @@ namespace RFLink
     const char *jsonSections[] = {
             "wifi",
             "core",
-            "mqtt",
             "portal",
             "signal",
             "radio",
@@ -49,9 +47,6 @@ namespace RFLink
     ConfigItem *configItemLists[] = {
 #if defined(RFLINK_WIFI_ENABLED)
             &RFLink::Wifi::configItems[0],
-            #ifndef RFLINK_MQTT_DISABLED
-            &RFLink::Mqtt::configItems[0],
-            #endif // RFLINK_MQTT_DISABLED
             #ifndef RFLINK_PORTAL_DISABLED
             &RFLink::Portal::configItems[0],
             #endif // RFLINK_PORTAL_DISABLED

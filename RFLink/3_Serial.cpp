@@ -77,18 +77,6 @@ boolean readSerialAndExecute() {
     return false;
 }
 
-boolean CheckMQTT(byte *byte_in) {
-    if (CopySerial((char *) byte_in)) {
-#ifdef SERIAL_ENABLED
-        //Serial.flush();
-        Serial.print(F("Message arrived [MQTT] "));
-        Serial.println(InputBuffer_Serial);
-#endif
-        return executeCliCommand(InputBuffer_Serial);
-    }
-    return false;
-}
-
 boolean CopySerial(char *src) {
     return (strncpy(InputBuffer_Serial, src, INPUT_COMMAND_SIZE - 2));
 }

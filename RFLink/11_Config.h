@@ -23,7 +23,6 @@ namespace RFLink
         { // WARNING!!! any change here must be reflected in jsonSections variable in Config.cpp
             Wifi_id,
             Core_id,
-            MQTT_id,
             Portal_id,
             Signal_id,
             Radio_id,

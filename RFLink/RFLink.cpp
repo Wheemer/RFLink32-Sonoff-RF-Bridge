@@ -24,7 +24,6 @@
 #include "3_Serial.h"
 #include "4_Display.h"
 #include "5_Plugin.h"
-#include "6_MQTT.h"
 #include "8_OLED.h"
 #include "10_Wifi.h"
 #include "11_Config.h"
@@ -62,10 +61,6 @@ namespace RFLink {
 
 #ifndef RFLINK_SERIAL_RX_BUFFER_SIZE
 #define RFLINK_SERIAL_RX_BUFFER_SIZE 512
-#endif
-
-#ifndef RFLINK_RAW_MQTT_BUFFER_SIZE
-#define RFLINK_RAW_MQTT_BUFFER_SIZE 1500
 #endif
 
     namespace {
@@ -141,67 +136,6 @@ namespace RFLink {
 #endif
       }
 
-#ifndef RFLINK_MQTT_DISABLED
-      char rawMqttBuffer[RFLINK_RAW_MQTT_BUFFER_SIZE];
-      size_t rawMqttBufferLength = 0;
-
-      void publishRawMqttBuffer()
-      {
-        if (rawMqttBufferLength == 0)
-          return;
-
-        rawMqttBuffer[rawMqttBufferLength] = 0;
-        RFLink::Mqtt::publishRawMsg(rawMqttBuffer);
-        rawMqttBufferLength = 0;
-        rawMqttBuffer[0] = 0;
-      }
-
-      void appendRawMqttChar(char c)
-      {
-        if (c == '\r')
-          return;
-
-        if (c == '\n') {
-          publishRawMqttBuffer();
-          return;
-        }
-
-        if (rawMqttBufferLength >= sizeof(rawMqttBuffer) - 1)
-          publishRawMqttBuffer();
-
-        rawMqttBuffer[rawMqttBufferLength++] = c;
-      }
-
-      void appendRawMqttText(const char *buf, bool end_of_line = false)
-      {
-        if (buf == nullptr)
-          return;
-
-        while (*buf != 0)
-          appendRawMqttChar(*buf++);
-
-        if (end_of_line)
-          publishRawMqttBuffer();
-      }
-
-      void appendRawMqttFlashText(const __FlashStringHelper *buf, bool end_of_line = false)
-      {
-        if (buf == nullptr)
-          return;
-
-        PGM_P cursor = reinterpret_cast<PGM_P>(buf);
-        char c;
-        while ((c = pgm_read_byte(cursor++)) != 0)
-          appendRawMqttChar(c);
-
-        if (end_of_line)
-          publishRawMqttBuffer();
-      }
-#else
-      void appendRawMqttChar(char) {}
-      void appendRawMqttText(const char *, bool = false) {}
-      void appendRawMqttFlashText(const __FlashStringHelper *, bool = false) {}
-#endif
     }
 
     void setup() {
@@ -262,9 +196,6 @@ namespace RFLink {
       #ifndef RFLINK_PORTAL_DISABLED
       RFLink::Portal::init();
       #endif // RFLINK_PORTAL_DISABLED
-      #ifndef RFLINK_MQTT_DISABLED
-      RFLink::Mqtt::setup_MQTT();
-      #endif // RFLINK_MQTT_DISABLED
 #endif // RFLINK_WIFI_ENABLED
 
 
@@ -281,10 +212,6 @@ namespace RFLink {
       setup_OLED();
 #endif
 
-
-#ifdef MQTT_ENABLED
-      //RFLink::Mqtt::publishMsg();
-#endif
 
       pbuffer[0] = 0;
       Radio::set_Radio_mode(Radio::Radio_RX);
@@ -304,9 +231,6 @@ namespace RFLink {
       RFLink::Portal::cleanupWebSocketClients();
 #endif
       RFLink::UpdateSecurity::maintain();
-      #ifndef RFLINK_MQTT_DISABLED
-      RFLink::Mqtt::checkMQTTloop();
-      #endif // RFLINK_MQTT_DISABLED
       RFLink::sendMsgFromBuffer();
 
 #if defined(RFLINK_WIFI_ENABLED)
@@ -343,9 +267,6 @@ namespace RFLink {
         Serial.print(pbuffer);
 #endif
 
-#ifndef RFLINK_MQTT_DISABLED
-        RFLink::Mqtt::publishMsg();
-#endif // !RFLINK_MQTT_DISABLED
 
 #ifdef OLED_ENABLED
         print_OLED();
@@ -422,7 +343,6 @@ namespace RFLink {
         if(end_of_line)
           Serial.println();
 #endif
-        appendRawMqttText(buf, end_of_line);
 
       }
     }
@@ -434,7 +354,6 @@ namespace RFLink {
 #endif
       char numberBuf[16];
       ltoa(n, numberBuf, 10);
-      appendRawMqttText(numberBuf);
     }
 
     void sendRawPrint(unsigned long n)
@@ -444,7 +363,6 @@ namespace RFLink {
 #endif
       char numberBuf[16];
       ultoa(n, numberBuf, 10);
-      appendRawMqttText(numberBuf);
     }
 
     void sendRawPrint(int n)
@@ -454,7 +372,6 @@ namespace RFLink {
 #endif
       char numberBuf[16];
       itoa(n, numberBuf, 10);
-      appendRawMqttText(numberBuf);
     }
 
     void sendRawPrint(unsigned int n)
@@ -464,7 +381,6 @@ namespace RFLink {
 #endif
       char numberBuf[16];
       utoa(n, numberBuf, 10);
-      appendRawMqttText(numberBuf);
     }
 
   void sendRawPrint(float f)
@@ -474,7 +390,6 @@ namespace RFLink {
 #endif
     char numberBuf[24];
     dtostrf(f, 0, 2, numberBuf);
-    appendRawMqttText(numberBuf);
   }
 
     void sendRawPrint(char c)
@@ -482,7 +397,6 @@ namespace RFLink {
 #ifdef SERIAL_ENABLED
       Serial.write(c);
 #endif
-      appendRawMqttChar(c);
     }
 
     void sendRawPrint(const __FlashStringHelper *buf, bool end_of_line){
@@ -491,7 +405,6 @@ namespace RFLink {
       if(end_of_line)
         Serial.println();
       #endif
-      appendRawMqttFlashText(buf, end_of_line);
     };
 
     /**

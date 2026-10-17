@@ -18,7 +18,8 @@ through a local WebSocket API.
   save.
 - Adds captive-portal handling for first setup from the device AP.
 - Fixes Wi-Fi form handling so disabled checkboxes, including AP enable, persist.
-- Removes MQTT and Serial2Net as Home Assistant command transports.
+- Removes MQTT and Serial2Net entirely; the supported Home Assistant path is
+  the local WebSocket API and the bundled `rf_bridge` integration.
 - Adds a local WebSocket API at `/api/ws` for command transmit, learning,
   reboot, status, and RF event push.
 - Keeps captive Wi-Fi setup on port `80` and serves the local API separately on
@@ -32,7 +33,7 @@ through a local WebSocket API.
 ## What This Build Does Not Include
 
 - Web firmware upload.
-- MQTT transport.
+- MQTT support or configuration.
 - Serial2Net transport.
 - Generic ESP32/LoRa/CC1101 board setup guidance.
 - OLED display support.
@@ -76,7 +77,6 @@ The build flags for this target include:
 -D RFLINK_FIRMWARE_VERSION='"0.7.0-dev"'
 -D RFLINK_HARDWARE_NAME='"RFLink32 - Sonoff RF Bridge"'
 -D RFLINK_USE_HARDCODED_RADIO_PINS_ONLY
--D RFLINK_MQTT_DISABLED
 ```
 
 ## Flash
@@ -154,7 +154,7 @@ fit while a long raw RF payload is still truncated on a stock-sized buffer.
 
 The web UI in this fork is intentionally lightweight. It keeps only Wi-Fi setup
 and removes normal user-facing pages that do not apply after Home Assistant
-discovery, such as MQTT setup, static IP settings, firmware upload, signal
+discovery, such as static IP settings, firmware upload, signal
 tuning, advanced JSON editing, and unsupported radio/plugin configuration. The
 WebSocket API remains available on port `8080` for integration/bootstrap and
 recovery tooling.

@@ -38,7 +38,6 @@
 #define SERIAL_ENABLED // Send RFLink messages over Serial
                           // dont forget to set the URL in Crendentials.h
 
-//#define RFLINK_MQTT_DISABLED    // to disable MQTT entirely (not compiled at all)
 //#define RFLINK_PORTAL_DISABLED    // to disable Portal/Web UI
 
 #if (defined(ESP32) || defined(ESP8266))
@@ -58,20 +57,6 @@
 // UI/Portal
 #define RFLINK_WEBUI_DEFAULT_USER "rflink32"
 #define RFLINK_WEBUI_DEFAULT_PASSWORD "433mhz"
-
-// MQTT messages
-#ifndef RFLink_default_MQTT_ENABLED
-  #define RFLink_default_MQTT_ENABLED false // Send RFLink messages over MQTT
-#endif
-#ifndef RFLink_default_MQTT_SSL_ENABLED
-  #define RFLink_default_MQTT_SSL_ENABLED false // Send MQTT messages over SSL
-#endif
-#define MQTT_LOOP_MS 1000     // MQTTClient.loop(); call period (in mSec)
-#define MQTT_RETAINED_0 false // Retained option
-#ifndef RFLink_default_MQTT_LWT              // Let know if Module is Online or Offline via MQTT Last Will message
-  #define RFLink_default_MQTT_LWT true
-#endif
-// #define CHECK_CACERT       // Send MQTT SSL CA Certificate
 
 #endif // (defined(ESP32) || defined(ESP8266))
 

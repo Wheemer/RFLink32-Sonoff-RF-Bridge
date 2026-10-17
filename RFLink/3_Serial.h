@@ -22,5 +22,4 @@ extern int serialBufferCursor;
 void resetSerialBuffer();
 
 boolean readSerialAndExecute();
-boolean CheckMQTT(byte *);
 #endif
