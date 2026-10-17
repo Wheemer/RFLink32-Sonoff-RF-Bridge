@@ -55,7 +55,7 @@ namespace RFLink {
     }
 
     struct timeval timeAtBoot;
-    struct timeval scheduledRebootTime;
+    unsigned long scheduledRebootAt = 0;
     char printBuf[300];
 
 #ifndef RFLINK_SERIAL_RX_BUFFER_SIZE
@@ -275,9 +275,8 @@ namespace RFLink {
         RFLink::sendMsgFromBuffer();
       }
 
-      struct timeval now;
-      gettimeofday(&now, nullptr);
-      if (scheduledRebootTime.tv_sec != 0 && now.tv_sec > scheduledRebootTime.tv_sec) {
+      if (scheduledRebootAt != 0 &&
+          (long)(millis() - scheduledRebootAt) >= 0) {
         Serial.println(F("***** Rebooting now for scheduled reboot !!! *****"));
         ESP.restart();
       }
@@ -583,8 +582,7 @@ namespace RFLink {
     }
 
     void scheduleReboot(unsigned int seconds) {
-      gettimeofday(&scheduledRebootTime, NULL);
-      scheduledRebootTime.tv_sec += seconds;
+      scheduledRebootAt = millis() + ((unsigned long)seconds * 1000UL);
     }
 
     void getStatusJsonString(JsonObject &output) {
