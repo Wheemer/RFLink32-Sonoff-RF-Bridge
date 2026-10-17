@@ -458,6 +458,10 @@ namespace RFLink { namespace Portal {
             (void) server;
             (void) arg;
             if(type == WS_EVT_CONNECT) {
+              // The API is event-driven. A slow client may miss a transient
+              // event, but must not trigger a reconnect loop that consumes
+              // the ESP8285 heap.
+              client->setCloseClientOnQueueFull(false);
               wsSendHello(client);
               return;
             }
