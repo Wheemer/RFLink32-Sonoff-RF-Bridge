@@ -712,40 +712,42 @@ namespace RFLink
 
       void disableAsyncReceiver()
       {
-        params::async_mode_enabled = false;
         stopScanning();
+        params::async_mode_enabled = false;
       }
 
       void startScanning()
       {
-        if (params::async_mode_enabled)
-        {
-          scanningStopped = false;
-          RawSignal.readyForDecoder = false;
-          RawSignal.Number = 0;
-          RawSignal.Time = 0;
-          RawSignal.Multiply = params::sample_rate;
-          lastChangedState_us = 0;
-          nextPulseTimeoutTime_us = 0;
-          attachInterrupt(digitalPinToInterrupt(Radio::pins::RX_DATA), RX_pin_changed_state, CHANGE);
-        }
-        else
+        if (!params::async_mode_enabled)
         {
           Serial.println(F("Start of async Receiver was requested but it's not enabled!"));
+          return;
         }
+
+        if (!scanningStopped)
+          return;
+
+        scanningStopped = false;
+        RawSignal.readyForDecoder = false;
+        RawSignal.Number = 0;
+        RawSignal.Time = 0;
+        RawSignal.Multiply = params::sample_rate;
+        lastChangedState_us = 0;
+        nextPulseTimeoutTime_us = 0;
+        attachInterrupt(digitalPinToInterrupt(Radio::pins::RX_DATA), RX_pin_changed_state, CHANGE);
       }
 
       void stopScanning()
       {
-        if(params::async_mode_enabled) {
-          scanningStopped = true;
-          detachInterrupt(Radio::pins::RX_DATA);
-        }
+        if(scanningStopped)
+          return;
+
+        scanningStopped = true;
+        detachInterrupt(Radio::pins::RX_DATA);
       }
 
       void IRAM_ATTR RX_pin_changed_state()
       {
-        static unsigned long lastChangedState_us = 0;
         unsigned long changeTime_us = micros();
 
         if (RawSignal.readyForDecoder) // it means previous packet has not been decoded yet, let's forget about it

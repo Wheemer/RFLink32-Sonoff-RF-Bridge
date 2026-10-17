@@ -51,8 +51,13 @@ def main() -> None:
         "if(estimated_ms > 120000ULL)",
         "const bool firstPulse = RawSignal.Number == 0;",
         "if (firstPulse && pulseLength_us < SIGNAL_MIN_PREAMBLE_US)",
+        "stopScanning();\n        params::async_mode_enabled = false;",
+        "if (!scanningStopped)\n          return;",
     ):
         require(signal, call)
+
+    if "static unsigned long lastChangedState_us" in signal.read_text(encoding="utf-8"):
+        raise SystemExit("Async scanner must reset the timestamp used by its ISR")
 
 
 if __name__ == "__main__":
