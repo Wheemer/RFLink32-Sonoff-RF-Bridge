@@ -19,6 +19,10 @@ def main() -> int:
     checks = (
         _require("RFLink/12_Portal.cpp", "AsyncWebServer setupServer(80);"),
         _require("RFLink/12_Portal.cpp", "ApiWebServer apiServer(RFLINK_API_PORT);"),
+        _require(
+            "RFLink/12_Portal_ws.cpp",
+            "apiWebSocket.availableForWrite(client->id())",
+        ),
         _require("RFLink/10_Wifi.cpp", "RFLink::Portal::stopSetupServer();"),
         _require(
             "RFLink/10_Wifi.cpp",
