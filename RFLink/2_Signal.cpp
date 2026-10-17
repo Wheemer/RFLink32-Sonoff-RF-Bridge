@@ -664,7 +664,8 @@ namespace RFLink
 
       if (!RawSignal.readyForDecoder)
       {
-        if (AsyncSignalScanner::nextPulseTimeoutTime_us > 0 && AsyncSignalScanner::nextPulseTimeoutTime_us < micros())
+        if (AsyncSignalScanner::nextPulseTimeoutTime_us > 0 &&
+            (long)(micros() - AsyncSignalScanner::nextPulseTimeoutTime_us) >= 0)
         { // may be current pulse has now timedout so we have a signal?
 
           AsyncSignalScanner::onPulseTimerTimeout(); // refresh signal properties

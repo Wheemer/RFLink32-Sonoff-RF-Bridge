@@ -51,6 +51,7 @@ def main() -> None:
         "if(estimated_ms > 120000ULL)",
         "const bool firstPulse = RawSignal.Number == 0;",
         "if (firstPulse && pulseLength_us < SIGNAL_MIN_PREAMBLE_US)",
+        "(long)(micros() - AsyncSignalScanner::nextPulseTimeoutTime_us) >= 0",
         "stopScanning();\n        params::async_mode_enabled = false;",
         "if (!scanningStopped)\n          return;",
     ):
