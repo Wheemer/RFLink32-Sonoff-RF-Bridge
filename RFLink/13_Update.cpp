@@ -2,6 +2,7 @@
 
 #if defined(ESP8266)
 #include <BearSSLHelpers.h>
+#include <ESP8266WiFi.h>
 #include <Updater.h>
 
 #include "12_Portal.h"
