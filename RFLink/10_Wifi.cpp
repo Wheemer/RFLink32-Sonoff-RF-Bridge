@@ -672,7 +672,7 @@ namespace RFLink { namespace Wifi {
 
         void eventHandler_WiFiStationGotIp(WiFiEvent_t event, WiFiEventInfo_t info) {
           Serial.printf_P(PSTR("WiFi Client has received a new IP: %s\r\n"), WiFi.localIP().toString().c_str());
-          if(params::client_enabled && WiFi.isConnected())
+          if(params::client_enabled && WiFi.isConnected() && (WiFi.getMode() & WIFI_AP) != 0)
             requestSetupAccessPointShutdown();
           if((WiFi.getMode() & WIFI_AP) == 0)
             startMdnsDiscovery();
@@ -704,7 +704,7 @@ void eventHandler_WiFiStationGotIp(const WiFiEventStationModeGotIP& evt) {
 #ifndef RFLINK_PORTAL_DISABLED
   RFLink::Portal::notifyNetworkReady();
 #endif
-  if(params::client_enabled && WiFi.isConnected())
+  if(params::client_enabled && WiFi.isConnected() && (WiFi.getMode() & WIFI_AP) != 0)
     requestSetupAccessPointShutdown();
   if((WiFi.getMode() & WIFI_AP) == 0)
     startMdnsDiscovery();
