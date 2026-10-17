@@ -357,7 +357,11 @@ namespace RFLink { namespace Portal {
 
         void notifyNetworkReady() {
           // ESPAsyncWebServer owns TCP state. Do not call end()/begin() from
-          // the ESP8266 Wi-Fi event callback; defer it to the cooperative loop.
+          // the ESP8266 Wi-Fi event callback; defer a needed start to the
+          // cooperative loop. The listener binds to IP_ANY_TYPE, so a normal
+          // DHCP/Got-IP notification must not interrupt a healthy API server.
+          if(apiServerStarted && apiServer.isListening())
+            return;
           apiServerRestartPending = true;
           apiServerRetryAt = 0;
         }
