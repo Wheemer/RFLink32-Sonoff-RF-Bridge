@@ -226,6 +226,7 @@ class RFBridgeHub:
         self._ws_task: asyncio.Task | None = None
         self._ws_ready = asyncio.Event()
         self._ws_lock = asyncio.Lock()
+        self._tx_lock = asyncio.Lock()
         self._pending: dict[int, asyncio.Future[dict[str, Any]]] = {}
         self._request_id = 0
         self._learning_expiry_cancel: Callable[[], None] | None = None
@@ -605,38 +606,48 @@ class RFBridgeHub:
         command_key: str | None = None,
         sequence_delay: float = DEFAULT_SEQUENCE_DELAY,
     ) -> dict[str, Any]:
-        results: list[dict[str, Any]] = []
-        for index, command in enumerate(commands, start=1):
-            results.append(
-                await self.async_send_raw(command, command_key=f"{command_key}:{index}")
-            )
-            if index != len(commands):
-                await asyncio.sleep(sequence_delay)
-        self.last_command_key = command_key
-        self.last_command = f"{len(commands)} RFLink32 commands"
-        self.last_success = True
-        self.async_write_diagnostics()
-        return {
-            "entry_id": self.entry.entry_id,
-            "host": self.host,
-            "command_key": command_key,
-            "commands": len(commands),
-            "sequence_delay": sequence_delay,
-            "elapsed_seconds": round(
-                sum(
-                    result.get("elapsed_seconds") or 0
-                    for result in results
-                    if isinstance(result, dict)
+        normalized_commands = tuple(normalize_command(command) for command in commands)
+        async with self._tx_lock:
+            results: list[dict[str, Any]] = []
+            for index, command in enumerate(normalized_commands, start=1):
+                results.append(
+                    await self._async_send_raw(
+                        command, command_key=f"{command_key}:{index}"
+                    )
+                )
+                if index != len(normalized_commands):
+                    await asyncio.sleep(sequence_delay)
+            self.last_command_key = command_key
+            self.last_command = f"{len(normalized_commands)} RFLink32 commands"
+            self.last_success = True
+            self.async_write_diagnostics()
+            return {
+                "entry_id": self.entry.entry_id,
+                "host": self.host,
+                "command_key": command_key,
+                "commands": len(normalized_commands),
+                "sequence_delay": sequence_delay,
+                "elapsed_seconds": round(
+                    sum(
+                        result.get("elapsed_seconds") or 0
+                        for result in results
+                        if isinstance(result, dict)
+                    ),
+                    2,
                 ),
-                2,
-            ),
-            "sent": True,
-        }
+                "sent": True,
+            }
 
     async def async_send_raw(
         self, command: str, *, command_key: str | None = None
     ) -> dict[str, Any]:
         command = normalize_command(command)
+        async with self._tx_lock:
+            return await self._async_send_raw(command, command_key=command_key)
+
+    async def _async_send_raw(
+        self, command: str, *, command_key: str | None = None
+    ) -> dict[str, Any]:
         self.last_command_key = command_key
         self.last_command = command
         self.last_error = None
