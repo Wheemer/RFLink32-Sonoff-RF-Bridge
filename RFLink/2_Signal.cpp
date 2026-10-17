@@ -45,6 +45,18 @@ namespace RFLink
     namespace runtime {
       bool verboseSignalFetchLoop = false;
       Slicer_enum appliedSlicer = Slicer_enum::Default;
+      unsigned long int txStartedCount = 0;
+      unsigned long int txFinishedCount = 0;
+      unsigned long int txFailedCount = 0;
+      unsigned long int txLastStartedMs = 0;
+      unsigned long int txLastFinishedMs = 0;
+      unsigned long int txLastElapsedMs = 0;
+      unsigned long int txLastEstimatedMs = 0;
+      unsigned int txLastPulses = 0;
+      unsigned int txLastRepeats = 0;
+      unsigned int txLastDelay = 0;
+      unsigned int txLastMultiply = 0;
+      char txLastError[48] = "";
     }
 
     namespace params
@@ -61,6 +73,16 @@ namespace RFLink
       unsigned long int scan_high_time;
 
       Slicer_enum slicer = Slicer_enum::Default;
+    }
+
+    void setTxLastError(const char *message)
+    {
+      if(message == nullptr) {
+        runtime::txLastError[0] = 0;
+        return;
+      }
+      strncpy(runtime::txLastError, message, sizeof(runtime::txLastError) - 1);
+      runtime::txLastError[sizeof(runtime::txLastError) - 1] = 0;
     }
 
     const char json_name_async_mode_enabled[] = "async_mode_enabled";
@@ -624,6 +646,15 @@ namespace RFLink
               //  sprintf(&pbuffer[responseLength-2], "RSSI=%i;\r\n", (int)RawSignal.rssi);
               return true;
             }
+            RFLink::recordRawRfEvent(
+              RawSignal.Number,
+              RawSignal.Repeats,
+              RawSignal.Delay,
+              RawSignal.Multiply,
+              RawSignal.Time,
+              RawSignal.rssi,
+              RawSignal.Pulses
+            );
           }
         } // while
         return false;
@@ -652,6 +683,16 @@ namespace RFLink
       { // Check all plugins to see which plugin can handle the received signal.
         counters::successfullyDecodedSignalsCount++;
         RepeatingTimer = millis() + params::signal_repeat_time;
+      } else {
+        RFLink::recordRawRfEvent(
+          RawSignal.Number,
+          RawSignal.Repeats,
+          RawSignal.Delay,
+          RawSignal.Multiply,
+          RawSignal.Time,
+          RawSignal.rssi,
+          RawSignal.Pulses
+        );
       }
       AsyncSignalScanner::startScanning();
       return (signalWasDecoded != 0);
@@ -936,92 +977,249 @@ namespace RFLink
       interrupts();
     }
 
+    void delayLongLowGap(unsigned long duration_us)
+    {
+      if(duration_us <= 5000UL) {
+        delayMicroseconds(duration_us);
+        return;
+      }
+
+      // Long raw-code spaces can be 80-110ms. Holding interrupts off for that
+      // entire LOW gap starves ESP8266 Wi-Fi/watchdog and can reboot the bridge.
+      interrupts();
+      while(duration_us >= 1000UL) {
+        unsigned long chunk = duration_us > 16000UL ? 16000UL : duration_us;
+        delayMicroseconds(chunk);
+        duration_us -= chunk;
+        yield();
+        ESP.wdtFeed();
+      }
+      if(duration_us > 0)
+        delayMicroseconds(duration_us);
+      noInterrupts();
+    }
+
     void RawSendRF(RawSignalStruct *signal)
     {
       int x;
+      unsigned long started_ms = millis();
+      runtime::txStartedCount++;
+      runtime::txLastStartedMs = started_ms;
+      runtime::txLastFinishedMs = 0;
+      runtime::txLastElapsedMs = 0;
+      runtime::txLastPulses = signal->Number;
+      runtime::txLastRepeats = signal->Repeats;
+      runtime::txLastDelay = signal->Delay;
+      runtime::txLastMultiply = signal->Multiply;
+      runtime::txLastError[0] = 0;
 
       Radio::set_Radio_mode(Radio::States::Radio_TX);
 
-      //RawSignal.Pulses[RawSignal.Number]=1;                                   // due to a bug in Arduino 1.0.1
-
-      for (byte y = 0; y <= signal->Repeats; y++)
-      { // herhaal verzenden RF code
+      for (uint16_t y = 0; y <= signal->Repeats; y++)
+      { // repeat transmitting the RF code
         x = 1;
         noInterrupts();
         while (x < signal->Number)
         {
+          unsigned long high_us = (unsigned long)signal->Pulses[x++] * signal->Multiply;
+          unsigned long low_us = (unsigned long)signal->Pulses[x++] * signal->Multiply;
           digitalWrite(Radio::pins::TX_DATA, HIGH);
-          delayMicroseconds(signal->Pulses[x++] * signal->Multiply); // min een kleine correctie
+          delayMicroseconds(high_us);
           digitalWrite(Radio::pins::TX_DATA, LOW);
-          delayMicroseconds(signal->Pulses[x++] * signal->Multiply); // min een kleine correctie
+          delayLongLowGap(low_us);
         }
         interrupts();
         if (y != signal->Repeats)
-          delay(signal->Delay); // Delay buiten het gebied waar de interrupts zijn uitgeschakeld! Anders werkt deze funktie niet.
+          delay(signal->Delay); // gap between repeats, outside the noInterrupts region
       }
 
       Radio::set_Radio_mode(Radio::States::Radio_RX);
+      runtime::txFinishedCount++;
+      runtime::txLastFinishedMs = millis();
+      runtime::txLastElapsedMs = runtime::txLastFinishedMs - started_ms;
+    }
+
+    const char *skipJsonWhitespace(const char *p)
+    {
+      while(p != nullptr && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n'))
+        p++;
+      return p;
+    }
+
+    bool parseJsonSignedField(const char *json_str, const char *field, signed int &value)
+    {
+      const char *p = strstr(json_str, field);
+      if(p == nullptr)
+        return false;
+      p = strchr(p, ':');
+      if(p == nullptr)
+        return false;
+      p = skipJsonWhitespace(p + 1);
+      char *endPtr = nullptr;
+      long parsed = strtol(p, &endPtr, 10);
+      if(endPtr == p)
+        return false;
+      endPtr = (char *)skipJsonWhitespace(endPtr);
+      if(*endPtr != ',' && *endPtr != '}' && *endPtr != ']')
+        return false;
+      value = (signed int)parsed;
+      return true;
+    }
+
+    bool scanJsonPulses(const char *json_str, RawSignalStruct &signal, bool fill, unsigned long multiply, int &count, unsigned long &longest_us)
+    {
+      const char *p = strstr(json_str, "\"pulses\"");
+      if(p == nullptr)
+        p = strstr(json_str, "pulses");
+      if(p == nullptr)
+        return false;
+      p = strchr(p, '[');
+      if(p == nullptr)
+        return false;
+      p++;
+
+      count = 0;
+      longest_us = 0;
+      while(true) {
+        p = skipJsonWhitespace(p);
+        if(*p == ']')
+          return true;
+        if(*p < '0' || *p > '9')
+          return false;
+
+        char *endPtr = nullptr;
+        unsigned long pulse = strtoul(p, &endPtr, 10);
+        if(endPtr == p)
+          return false;
+        p = endPtr;
+
+        count++;
+        if(count > RAW_BUFFER_SIZE)
+          return true;
+        if(pulse > longest_us)
+          longest_us = pulse;
+        if(fill)
+          signal.Pulses[count] = (uint16_t)((pulse + multiply / 2) / multiply);
+
+        p = skipJsonWhitespace(p);
+        if(*p == ',') {
+          p++;
+          continue;
+        }
+        if(*p == ']')
+          return true;
+        return false;
+      }
     }
 
     bool getSignalFromJson(RawSignalStruct &signal, const char *json_str)
     {
-      int jsonSize = strlen(json_str) * 6;
-      DynamicJsonDocument json(jsonSize);
-
-      if (deserializeJson(json, json_str) != DeserializationError::Ok)
-      {
-        Serial.println(F("An error occured while reading json"));
+      auto failTxParse = [](const char *message) {
+        setTxLastError(message);
+        runtime::txFailedCount++;
         return false;
-      }
+      };
 
       signal.Number = 0;
       signal.Delay = 0;
       signal.Multiply = params::sample_rate;
       signal.Time = 0UL;
 
-      auto &&root = json.as<JsonObject>();
-      JsonArrayConst pulsesJson = root.getMember("pulses");
-
-
-      signal.Number = pulsesJson.size();
+      int pulseCount = 0;
+      unsigned long longest_us = 0;
+      if(!scanJsonPulses(json_str, signal, false, 1, pulseCount, longest_us)) {
+        Serial.println(F("An error occured while reading json"));
+        return failTxParse("invalid sendRF JSON");
+      }
+      signal.Number = pulseCount;
 
       if(signal.Number < 2) {
         Serial.println(F("error, your signal has 0 pulse defined!"));
-        return false;
+        return failTxParse("not enough pulses");
       }
 
       if(signal.Number > RAW_BUFFER_SIZE) {
         Serial.printf_P(PSTR("error, your Signal has %i pulses while this supports only %i\r\n"), signal.Number, RAW_BUFFER_SIZE);
+        return failTxParse("too many pulses");
+      }
+
+      if((signal.Number % 2) != 0) {
+        Serial.printf_P(PSTR("sendRF: trimming final unpaired pulse from odd pulse count (%i)\r\n"), signal.Number);
+        signal.Number--;
+      }
+
+      unsigned long multiply = params::sample_rate;
+      if (multiply < 1)
+        multiply = 1;
+      while ((longest_us + (multiply / 2UL)) / multiply > 65535UL)
+        multiply++;
+
+      if (multiply > 255UL) {
+        Serial.printf_P(PSTR("error, your Signal has a %lu us pulse which is too long to transmit\r\n"), longest_us);
+        return failTxParse("pulse too long");
+      }
+
+      if (multiply != params::sample_rate)
+        Serial.printf_P(PSTR("sendRF: scaling pulses by %lu to fit %lu us\r\n"), multiply, longest_us);
+
+      signal.Multiply = (byte)multiply;
+
+      if(!scanJsonPulses(json_str, signal, true, multiply, pulseCount, longest_us)) {
+        Serial.println(F("An error occured while reading json"));
+        return failTxParse("invalid sendRF pulses");
+      }
+
+      signed int repeat = 0;
+      signed int delay = 0;
+      if(strstr(json_str, "\"repeat\"") != nullptr && !parseJsonSignedField(json_str, "\"repeat\"", repeat))
+        return failTxParse("invalid repeat");
+      if(strstr(json_str, "\"delay\"") != nullptr && !parseJsonSignedField(json_str, "\"delay\"", delay))
+        return failTxParse("invalid delay");
+
+      if(repeat < 0 || repeat > 100) {
+        Serial.printf_P(PSTR("error, repeat value %i is outside supported range 0..100\r\n"), repeat);
+        setTxLastError("repeat out of range");
+        runtime::txFailedCount++;
         return false;
       }
 
-      int index = 0;
-      for (JsonVariantConst pulse : pulsesJson)
-      {
-        index++;
-        signal.Pulses[index] = pulse.as<signed long int>() / params::sample_rate;
-        //Serial.printf("Pulse=%i\r\n",signal.Pulses[index]);
+      if(delay < 0 || delay > 10000) {
+        Serial.printf_P(PSTR("error, delay value %i is outside supported range 0..10000ms\r\n"), delay);
+        setTxLastError("delay out of range");
+        runtime::txFailedCount++;
+        return false;
       }
 
-      signal.Repeats = root.getMember("repeat").as<signed int>();
-      signal.Delay = root.getMember("delay").as<signed int>();
+      signal.Repeats = repeat;
+      signal.Delay = delay;
+
+      unsigned long estimated_us = 0;
+      for(int i = 1; i <= signal.Number; i++)
+        estimated_us += (unsigned long)signal.Pulses[i] * signal.Multiply;
+      runtime::txLastEstimatedMs = ((estimated_us / 1000UL) * ((unsigned long)signal.Repeats + 1UL)) +
+        ((unsigned long)signal.Delay * (unsigned long)signal.Repeats);
+
+      if(runtime::txLastEstimatedMs > 120000UL) {
+        Serial.printf_P(PSTR("error, estimated transmit time %lu ms is too long\r\n"), runtime::txLastEstimatedMs);
+        setTxLastError("estimated tx too long");
+        runtime::txFailedCount++;
+        return false;
+      }
 
       return true;
 
     }
 
-    void executeCliCommand(char *cmd)
+    bool executeCliCommand(char *cmd)
     {
       static const char error_command_aborted[] PROGMEM = "An error occurred, invalid signal was given. Command aborted!";
-
-      RawSignalStruct signal{};
 
       char *commaIndex = strchr(cmd, ';');
 
       if (commaIndex == nullptr)
       {
         Serial.println(F("Error : failed to find ending ';' for the command"));
-        return;
+        return false;
       }
 
       int commandSize = commaIndex - cmd;
@@ -1030,14 +1228,31 @@ namespace RFLink
 
       if (strncasecmp_P(cmd, commands::sendRF, commandSize) == 0)
       {
-        if(!getSignalFromJson(signal, commaIndex + 1)) {
-          RFLink::sendRawPrint(FPSTR(error_command_aborted), true);
-          return;
+        if(Radio::pins::TX_DATA == NOT_A_PIN) {
+          setTxLastError("TX_DATA pin undefined");
+          runtime::txFailedCount++;
+          Serial.println(F("ERROR: TX_DATA PIN is not defined!"));
+          return false;
         }
 
-        Serial.printf_P(PSTR("** sending RF signal with the following properties: pulses=%i, repeat=%i, delay=%i, multiply=%i... "), signal.Number, signal.Repeats, signal.Delay, signal.Multiply);
-        RawSendRF(&signal);
+        // Fill a SEPARATE signal struct, not the global RawSignal. getSignalFromJson
+        // runs while the async RX ISR may still be attached and writing RawSignal;
+        // using our own buffer avoids that race. set_Radio_mode(TX) inside RawSendRF
+        // stops the scanner before the actual emit. static (not stack) to avoid a
+        // ~600B stack allocation in the WS-job context; sends are serialized so it
+        // is never reentered.
+        static RawSignalStruct txSignal;
+        if(!getSignalFromJson(txSignal, commaIndex + 1)) {
+          RFLink::sendRawPrint(FPSTR(error_command_aborted), true);
+          return false;
+        }
+
+        Serial.printf_P(PSTR("** sending RF signal with the following properties: pulses=%i, repeat=%i, delay=%i, multiply=%i... "), txSignal.Number, txSignal.Repeats, txSignal.Delay, txSignal.Multiply);
+        yield();
+        ESP.wdtFeed();
+        RawSendRF(&txSignal);
         Serial.println(F("done"));
+        return true;
       }
       else if (strncasecmp_P(cmd, commands::testRF, commandSize) == 0)
       {
@@ -1046,7 +1261,7 @@ namespace RFLink
         if(!getSignalFromJson(RawSignal, commaIndex+1)) {
           Serial.println(FPSTR(error_command_aborted));
           RawSignal.readyForDecoder = false;
-          return;
+          return false;
         }
 
         Serial.printf_P(PSTR("Sending your signal to Plugins (%i pulses)\r\n"), RawSignal.Number);
@@ -1054,17 +1269,21 @@ namespace RFLink
         if (!PluginRXCall(0, 0)){
           Serial.println(F("No plugin has matched your signal"));
         }
-        else
+        else {
           RFLink::sendMsgFromBuffer();
+          RawSignal.readyForDecoder = false;
+          return true;
+        }
 
         RawSignal.readyForDecoder = false;
+        return false;
       }
       else if (strncasecmp_P(cmd, commands::testRFMoveForward, commandSize) == 0)
       {
         if(!getSignalFromJson(RawSignal, commaIndex+1)) {
           Serial.println(FPSTR(error_command_aborted));
           RawSignal.readyForDecoder = false;
-          return;
+          return false;
         }
 
         while(RawSignal.Number >= (int)params::min_raw_pulses) {
@@ -1078,7 +1297,8 @@ namespace RFLink
           }
           else {
             RFLink::sendMsgFromBuffer();
-            break;
+            RawSignal.readyForDecoder = false;
+            return true;
           }
 
           RawSignal.Number -= 2;
@@ -1091,11 +1311,15 @@ namespace RFLink
         runtime::verboseSignalFetchLoop = true;
         sendRawPrint(PSTR("30;verboseSignalFetchLoop"));
         sendRawPrint(PSTR(" enabled;"),true);
+        RawSignal.readyForDecoder = false;
+        return true;
       }
       else if (strncasecmp_P(cmd, commands::disableVerboseSignalFetchLoop, commandSize) == 0) {
         runtime::verboseSignalFetchLoop = false;
         sendRawPrint(PSTR("30;verboseSignalFetchLoop"));
         sendRawPrint(PSTR(" disabled;"),true);
+        RawSignal.readyForDecoder = false;
+        return true;
       }
       else
       {
@@ -1103,6 +1327,7 @@ namespace RFLink
       }
 
       RawSignal.readyForDecoder = false;
+      return false;
     }
 
     void getStatusJsonString(JsonObject &output)

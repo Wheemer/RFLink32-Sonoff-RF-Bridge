@@ -1,0 +1,51 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "RF Bridge",
+        "description": "Configure a local RF Bridge and optional command libraries. Commands must be JSON: {\"key\": {\"name\": \"Name\", \"command\": \"10;signal;sendRF;...\", \"icon\": \"mdi:remote\", \"sequence_delay\": 0.6}}.",
+        "data": {
+          "host": "Bridge host",
+          "api_port": "Bridge API port",
+          "commands": "Command library JSON",
+          "known_commands": "Known received command JSON"
+        }
+      },
+      "zeroconf_confirm": {
+        "title": "RF Bridge",
+        "description": "Do you want to add {name}?"
+      }
+    },
+    "error": {
+      "invalid_commands": "The command library JSON is invalid.",
+      "invalid_known_commands": "The known received command JSON is invalid.",
+      "cannot_connect": "Could not connect to the RF Bridge."
+    },
+    "abort": {
+      "already_configured": "This RF Bridge is already configured.",
+      "invalid_discovery": "The RF Bridge discovery data is invalid."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "RF Bridge options",
+        "description": "Edit the command and known received command JSON.",
+        "data": {
+          "commands": "Command library JSON",
+          "known_commands": "Known received command JSON"
+        }
+      }
+    },
+    "error": {
+      "invalid_commands": "The command library JSON is invalid.",
+      "invalid_known_commands": "The known received command JSON is invalid."
+    }
+  },
+  "exceptions": {
+    "unknown_command": {
+      "message": "Unknown RFLink32 command key: {command_key}"
+    }
+  }
+}

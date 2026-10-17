@@ -4,6 +4,11 @@
 __pycache__/
 *.pyc
 *.bin
+*.bin.gz
+*.signed
+build-output/
+release/
+signing.key
 pictures/Full size/
 RFLink/*.ino
 cmake-build-*

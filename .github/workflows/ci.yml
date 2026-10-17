@@ -1,88 +1,62 @@
-name: Rflink Build Tests
+name: RF Bridge validation
 
 on:
   push:
   pull_request:
 
-jobs:
+permissions:
+  contents: read
 
-  build:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up Python 3.9
-      uses: actions/setup-python@v2
-      with:
-        python-version: 3.9
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -U platformio==6.1.5
-        pio update
-        pip install esptool
+      - uses: actions/checkout@v4
 
-    - name: Make a BUILDNAME
-      run: echo "RFLINK_BUILDNAME=\"$(date '+%Y%m%d-%H%M%S')-${GITHUB_REF#refs/heads/}\"" >> $GITHUB_ENV
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
 
-    - name: ESP32_none_enabled
-      run: |
-        echo "buid name $RFLINK_BUILDNAME"
-        pio run --project-conf .travis.platformio.ini --environment ESP32_none_enabled
+      - name: Install validation dependencies
+        run: python -m pip install --upgrade platformio ruff homeassistant pyyaml
 
-    - name: ESP32_sw
-      run: |
-        pio run --project-conf .travis.platformio.ini --environment ESP32_sw
+      - name: Validate Home Assistant integration
+        run: |
+          ruff check custom_components/rf_bridge/update.py tools/check_sonoff_bridge_ota_layout.py tools/package_sonoff_bridge_update.py tools/validate_ota_layout.py
+          python -m compileall -q custom_components/rf_bridge tools
+          python - <<'PY'
+          import json
+          import yaml
+          for path in (
+              "custom_components/rf_bridge/manifest.json",
+              "custom_components/rf_bridge/strings.json",
+              "custom_components/rf_bridge/translations/en.json",
+          ):
+              with open(path, encoding="utf-8") as handle:
+                  json.load(handle)
+          with open("custom_components/rf_bridge/services.yaml", encoding="utf-8") as handle:
+              yaml.safe_load(handle)
+          import custom_components.rf_bridge
+          import custom_components.rf_bridge.button
+          import custom_components.rf_bridge.config_flow
+          import custom_components.rf_bridge.event
+          import custom_components.rf_bridge.sensor
+          import custom_components.rf_bridge.update
+          PY
 
-    - name: sonoff_bridge
-      run: |
-        pio run --project-conf .travis.platformio.ini --environment sonoff_bridge
+      - name: Build the modified Sonoff RF Bridge firmware
+        run: pio run -e sonoff_bridge
 
-    - name: Copy firmwares in 1 place
-      if: github.event_name == 'push'
-      run: |
-        mkdir firmwares
-        cp .pio/build/ESP32_sw/bootloader.bin firmwares/bootloader_dio_40m.bin
-        cp .pio/build/ESP32_sw/firmware.bin firmwares/esp32-firmware-OTA.bin
-        cp .pio/build/ESP32_sw/partitions.bin firmwares/esp32-partitions.bin
-        cp .pio/build/sonoff_bridge/firmware.bin firmwares/sonoff_bridge-firmware.bin
-        cd firmwares
-        cp /home/runner/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin .
-        python ../tools/esp32-makeimg.py bootloader_dio_40m.bin esp32-partitions.bin boot_app0.bin esp32-firmware-OTA.bin esp32-full.img
-        cd ..
+      - name: Validate OTA layout
+        run: python tools/validate_ota_layout.py .pio/build/sonoff_bridge/firmware.bin
 
-    - name: Publish firmware for Master branch
-      if: github.ref == 'refs/heads/master' && github.event_name == 'push'
-      uses: "marvinpinto/action-automatic-releases@latest"
-      with:
-        repo_token: "${{ secrets.GITHUB_TOKEN }}"
-        automatic_release_tag: "nightly"
-        prerelease: true
-        title: "Latest *almost* stable Build"
-        files: |
-          firmwares/*
-
-    - name: Publish firmware for rtl_433 branch
-      if: github.ref == 'refs/heads/rtl_433' && github.event_name == 'push'
-      uses: "marvinpinto/action-automatic-releases@latest"
-      with:
-        repo_token: "${{ secrets.GITHUB_TOKEN }}"
-        automatic_release_tag: "nightly-RTL_433"
-        prerelease: true
-        title: "RTL_433 Development Build"
-        files: |
-          firmwares/*
-
-    - name: Publish firmware for testing-only branch
-      if: github.ref == 'refs/heads/testing-only' && github.event_name == 'push'
-      uses: "marvinpinto/action-automatic-releases@latest"
-      with:
-        repo_token: "${{ secrets.GITHUB_TOKEN }}"
-        automatic_release_tag: "nightly-testing-only"
-        prerelease: true
-        title: "TESTING ONLY - ONLY USE IF INSTRUCTED BY SOMEONE"
-        files: |
-          firmwares/*
-
-
-
+      - name: Upload serial bootstrap artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: modified-sonoff-rf-bridge-firmware
+          path: .pio/build/sonoff_bridge/firmware.bin

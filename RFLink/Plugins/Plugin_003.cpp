@@ -661,7 +661,7 @@ boolean  PluginTX_003(byte function, const char *string)
       replacechar(InputBuffer_Serial, ';', 0x00);
 
       Home = tolower(strtol(&InputBuffer_Serial[12], NULL, 16));
-      if ('0' <= Home <= 'p')
+      if ('0' <= Home && Home <= 'p')
          Home = Home - 'a';
       else
          return false; // invalid value

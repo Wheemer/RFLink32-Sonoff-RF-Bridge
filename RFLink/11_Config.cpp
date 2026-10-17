@@ -71,6 +71,89 @@ namespace RFLink
 
     StaticJsonDocument<RFLINK_CONFIG_JSON_BUFFER_SIZE> doc; // Current config's JSON document
 
+#ifdef ESP8266
+    namespace {
+      // Earlier bridge builds used eagle.flash.1m256.ld. On a one-megabyte
+      // ESP8285 that LittleFS volume starts at 0xBB000 and ends at 0xFB000.
+      // The OTA layout uses 0xEB000..0xFB000 instead. Mount the old location
+      // without auto-formatting only long enough to copy a valid config.
+      constexpr uint32_t LEGACY_FS_START = 0xBB000;
+      constexpr uint32_t LEGACY_FS_SIZE = 0x40000;
+      constexpr uint32_t LEGACY_FS_PAGE_SIZE = 0x100;
+      constexpr uint32_t LEGACY_FS_BLOCK_SIZE = 0x1000;
+      constexpr uint32_t LEGACY_FS_MAX_OPEN_FILES = 5;
+      constexpr size_t MAX_LEGACY_CONFIG_BYTES = 8192;
+
+      bool migrateLegacyConfigToOtaLayout()
+      {
+        fs::FS legacyFs(fs::FSImplPtr(new littlefs_impl::LittleFSImpl(
+          LEGACY_FS_START,
+          LEGACY_FS_SIZE,
+          LEGACY_FS_PAGE_SIZE,
+          LEGACY_FS_BLOCK_SIZE,
+          LEGACY_FS_MAX_OPEN_FILES
+        )));
+        LittleFSConfig noFormat(false);
+        if(!legacyFs.setConfig(noFormat) || !legacyFs.begin())
+          return false;
+
+        File legacyFile = legacyFs.open(configFileName, "r");
+        if(!legacyFile) {
+          legacyFs.end();
+          return false;
+        }
+
+        if(legacyFile.size() == 0 || legacyFile.size() > MAX_LEGACY_CONFIG_BYTES) {
+          legacyFile.close();
+          legacyFs.end();
+          return false;
+        }
+
+        doc.clear();
+        DeserializationError error = deserializeJson(doc, legacyFile);
+        legacyFile.close();
+        legacyFs.end();
+        if(error || !doc.is<JsonObject>()) {
+          doc.clear();
+          return false;
+        }
+
+        if(!LittleFS.format() || !LittleFS.begin()) {
+          doc.clear();
+          return false;
+        }
+
+        File destination = LittleFS.open(configFileName, "w");
+        if(!destination) {
+          doc.clear();
+          return false;
+        }
+        const size_t written = serializeJson(doc, destination);
+        destination.close();
+        doc.clear();
+        return written > 0;
+      }
+
+      bool mountPersistentFilesystem()
+      {
+        LittleFSConfig noFormat(false);
+        if(!LittleFS.setConfig(noFormat))
+          return false;
+        if(LittleFS.begin())
+          return true;
+
+        Serial.println(F("No OTA-layout filesystem; checking legacy config..."));
+        if(migrateLegacyConfigToOtaLayout()) {
+          Serial.println(F("Migrated legacy configuration to OTA layout."));
+          return true;
+        }
+
+        Serial.println(F("No legacy configuration found; formatting OTA layout."));
+        return LittleFS.format() && LittleFS.begin();
+      }
+    }
+#endif
+
     void resetConfig()
     {
       if (LittleFS.exists(configFileName))
@@ -136,7 +219,7 @@ namespace RFLink
       #ifdef ESP32
       if (!LittleFS.begin(true))
       #else
-      if( !LittleFS.begin())
+      if(!mountPersistentFilesystem())
       #endif
       {
         Serial.println(F(" FAILED!!"));

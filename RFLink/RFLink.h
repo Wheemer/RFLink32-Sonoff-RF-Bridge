@@ -13,14 +13,22 @@
 #include <sys/time.h>
 
 #define BUILDNR 0x05    // shown in version
-#define REVNR 0x03      // shown in version and startup string
+#define REVNR 0x27      // shown in version and startup string
 
 #ifndef RFLINK_BUILDNAME
 #define RFLINK_BUILDNAME "unknown"
 #endif
 
+#ifndef RFLINK_FIRMWARE_VERSION
+#define RFLINK_FIRMWARE_VERSION "0.0.0-dev"
+#endif
+
 #ifndef RFLINK_HARDWARE_NAME
 #define RFLINK_HARDWARE_NAME "Generic RFLink"
+#endif
+
+#ifndef RFLINK_API_PORT
+#define RFLINK_API_PORT 8080
 #endif
 
 #ifndef DEFAULT_WIFI_CLIENT_HOSTNAME
@@ -105,8 +113,24 @@ namespace RFLink {
     //void sendRawPrintf_P(PGM_P, ...);
 
     void getStatusJsonString(JsonObject &output);
+    void armRawRfLearning(unsigned int seconds);
+    void maintainRawRfLearning();
+    void recordRawRfEvent(
+      int number,
+      byte repeat,
+      byte delay,
+      byte multiply,
+      unsigned long time,
+      float rssi,
+      const uint16_t *pulses
+    );
+    uint32_t getRfEventCursor();
 
     void scheduleReboot(unsigned int seconds);
+
+    namespace UpdateSecurity {
+      void setup();
+    }
 }
 
 void CallReboot(void);

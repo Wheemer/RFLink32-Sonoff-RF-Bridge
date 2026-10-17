@@ -6,6 +6,7 @@
 #ifndef RFLINK_PORTAL_DISABLED
 
 #include "11_Config.h"
+#include <ESPAsyncWebServer.h>
 
 namespace RFLink {
     namespace Portal {
@@ -17,9 +18,30 @@ namespace RFLink {
         void init();
         void start();
         void stop();
+        // Called after the station has an address. The API listener must be
+        // created from the main loop, never directly from a Wi-Fi callback.
+        void notifyNetworkReady();
+        void maintainApiServer();
+        void startSetupServer();
+        void stopSetupServer();
 
         void paramsUpdatedCallback();
         void refreshParametersFromConfig(bool triggerChanges=true);
+
+        void initWebSocket(AsyncWebServer &server);
+        void processWebSocketJobs();
+        void broadcastRfEvent(
+          uint32_t sequence,
+          unsigned long eventMillis,
+          const char *message,
+          bool raw,
+          int pulseCount,
+          int rssi,
+          bool truncated,
+          const char *command
+        );
+        void cleanupWebSocketClients();
+        void closeWebSocketClients();
     }
 }
 

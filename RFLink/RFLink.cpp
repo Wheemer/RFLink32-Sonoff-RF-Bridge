@@ -29,6 +29,7 @@
 #include "10_Wifi.h"
 #include "11_Config.h"
 #include "12_Portal.h"
+#include "13_Update.h"
 
 #if (defined(__AVR_ATmega328P__) || defined(__AVR_ATmega2560__))
 #include <avr/power.h>
@@ -65,13 +66,75 @@ namespace RFLink {
 #define RFLINK_RAW_MQTT_BUFFER_SIZE 1500
 #endif
 
+#ifndef RFLINK_RF_EVENT_MESSAGE_SIZE
+#define RFLINK_RF_EVENT_MESSAGE_SIZE 220
+#endif
+
+#ifndef RFLINK_RF_EVENT_COMMAND_SIZE
+#define RFLINK_RF_EVENT_COMMAND_SIZE 1800
+#endif
+
     namespace {
+      struct RfEventRecord {
+        uint32_t sequence = 0;
+        unsigned long millis = 0;
+        char message[RFLINK_RF_EVENT_MESSAGE_SIZE] = {0};
+        char command[RFLINK_RF_EVENT_COMMAND_SIZE] = {0};
+        bool raw = false;
+        int pulseCount = 0;
+        int rssi = 0;
+        bool truncated = false;
+      };
+
+      // The Home Assistant protocol receives RF events immediately over its
+      // persistent connection. Retaining four full raw commands consumed over
+      // 8 KB of scarce ESP8285 RAM without any reader for that queue.
+      RfEventRecord rfEventScratch;
+      uint32_t rfEventSequence = 0;
+      bool rawRfLearningArmed = false;
+      unsigned long rawRfLearningExpiresAt = 0;
+
+      bool isRfEventMessage(const char *message)
+      {
+        return message != nullptr && strncmp(message, "20;", 3) == 0;
+      }
+
+      void recordRfEvent(const char *message)
+      {
+        if(!isRfEventMessage(message))
+          return;
+
+        RfEventRecord &record = rfEventScratch;
+        record.sequence = ++rfEventSequence;
+        record.millis = millis();
+        strncpy(record.message, message, sizeof(record.message) - 1);
+        record.message[sizeof(record.message) - 1] = 0;
+        record.command[0] = 0;
+        record.raw = false;
+        record.pulseCount = 0;
+        record.rssi = 0;
+        record.truncated = false;
+
+#ifndef RFLINK_PORTAL_DISABLED
+        RFLink::Portal::broadcastRfEvent(
+          record.sequence,
+          record.millis,
+          record.message,
+          false,
+          0,
+          0,
+          false,
+          nullptr
+        );
+#endif
+      }
+
+#ifndef RFLINK_MQTT_DISABLED
       char rawMqttBuffer[RFLINK_RAW_MQTT_BUFFER_SIZE];
       size_t rawMqttBufferLength = 0;
 
       void publishRawMqttBuffer()
       {
-#ifndef RFLINK_MQTT_DISABLED
         if (rawMqttBufferLength == 0)
           return;
 
@@ -79,12 +142,10 @@ namespace RFLink {
         RFLink::Mqtt::publishRawMsg(rawMqttBuffer);
         rawMqttBufferLength = 0;
         rawMqttBuffer[0] = 0;
-#endif
       }
 
       void appendRawMqttChar(char c)
       {
-#ifndef RFLINK_MQTT_DISABLED
         if (c == '\r')
           return;
 
@@ -97,12 +158,10 @@ namespace RFLink {
           publishRawMqttBuffer();
 
         rawMqttBuffer[rawMqttBufferLength++] = c;
-#endif
       }
 
       void appendRawMqttText(const char *buf, bool end_of_line = false)
       {
-#ifndef RFLINK_MQTT_DISABLED
         if (buf == nullptr)
           return;
 
@@ -111,12 +170,10 @@ namespace RFLink {
 
         if (end_of_line)
           publishRawMqttBuffer();
-#endif
       }
 
       void appendRawMqttFlashText(const __FlashStringHelper *buf, bool end_of_line = false)
       {
-#ifndef RFLINK_MQTT_DISABLED
         if (buf == nullptr)
           return;
 
@@ -127,8 +184,12 @@ namespace RFLink {
 
         if (end_of_line)
           publishRawMqttBuffer();
-#endif
       }
+#else
+      void appendRawMqttChar(char) {}
+      void appendRawMqttText(const char *, bool = false) {}
+      void appendRawMqttFlashText(const __FlashStringHelper *, bool = false) {}
+#endif
     }
 
     void setup() {
@@ -139,6 +200,8 @@ namespace RFLink {
       Serial.setTimeout(1);
 
       Serial.begin(BAUD); // Initialise the serial port
+
+      RFLink::UpdateSecurity::setup();
 
       if (gettimeofday(&timeAtBoot, NULL) != 0) {
         Serial.println(F("Failed to obtain time"));
@@ -219,6 +282,12 @@ namespace RFLink {
     }
 
     void mainLoop() {
+#ifndef RFLINK_PORTAL_DISABLED
+      maintainRawRfLearning();
+      RFLink::Portal::processWebSocketJobs();
+      RFLink::Portal::cleanupWebSocketClients();
+#endif
+      RFLink::UpdateSecurity::maintain();
       #ifndef RFLINK_MQTT_DISABLED
       RFLink::Mqtt::checkMQTTloop();
       #endif // RFLINK_MQTT_DISABLED
@@ -226,6 +295,10 @@ namespace RFLink {
 
 #if defined(RFLINK_WIFI_ENABLED)
       RFLink::Wifi::mainLoop();
+#endif
+
+#ifndef RFLINK_PORTAL_DISABLED
+      RFLink::Portal::maintainApiServer();
 #endif
 
 #if defined(SERIAL_ENABLED)
@@ -248,6 +321,7 @@ namespace RFLink {
 
     void sendMsgFromBuffer() {
       if (pbuffer[0] != 0) {
+        recordRfEvent(pbuffer);
 
 #ifdef SERIAL_ENABLED
         Serial.print(pbuffer);
@@ -263,6 +337,129 @@ namespace RFLink {
 
         pbuffer[0] = 0;
       }
+    }
+
+    uint32_t getRfEventCursor() {
+      return rfEventSequence;
+    }
+
+    void armRawRfLearning(unsigned int seconds) {
+      rawRfLearningArmed = true;
+      rawRfLearningExpiresAt = millis() + ((unsigned long) seconds * 1000UL);
+    }
+
+    void maintainRawRfLearning() {
+      if(!rawRfLearningArmed || rawRfLearningExpiresAt == 0)
+        return;
+      if((long)(millis() - rawRfLearningExpiresAt) >= 0) {
+        rawRfLearningArmed = false;
+        rawRfLearningExpiresAt = 0;
+      }
+    }
+
+    void recordRawRfEvent(
+      int number,
+      byte repeat,
+      byte delay,
+      byte multiply,
+      unsigned long time,
+      float rssi,
+      const uint16_t *pulses
+    ) {
+      if(!rawRfLearningArmed)
+        return;
+      if(rawRfLearningExpiresAt != 0 && (long)(millis() - rawRfLearningExpiresAt) >= 0) {
+        rawRfLearningArmed = false;
+        return;
+      }
+      if(number <= 0 || pulses == nullptr)
+        return;
+
+      RfEventRecord &record = rfEventScratch;
+      record.sequence = ++rfEventSequence;
+      record.millis = millis();
+      record.raw = true;
+      record.pulseCount = number;
+      record.rssi = (int) rssi;
+      record.truncated = false;
+      snprintf_P(
+        record.message,
+        sizeof(record.message),
+        PSTR("20;XX;RAW;Pulses=%i;RSSI=%i;"),
+        number,
+        (int) rssi
+      );
+
+      int commandPulseCount = number;
+      bool commandWasTrimmed = false;
+      if((commandPulseCount % 2) != 0) {
+        commandPulseCount--;
+        commandWasTrimmed = true;
+      }
+      if(commandPulseCount < 2)
+        record.truncated = true;
+
+      int headerLength = snprintf_P(
+        record.command,
+        sizeof(record.command),
+        PSTR("10;signal;sendRF;{\"repeat\":%u,\"delay\":%u,\"pulses\":["),
+        repeat,
+        delay
+      );
+      size_t offset = 0;
+      if(headerLength < 0 || (size_t)headerLength >= sizeof(record.command) - 3) {
+        record.command[0] = 0;
+        record.truncated = true;
+      } else {
+        offset = (size_t)headerLength;
+      }
+
+      for(int index = 1; !record.truncated && index <= commandPulseCount; index++) {
+        if((index & 0x1F) == 0) {
+          yield();
+          ESP.wdtFeed();
+        }
+        unsigned long pulse_us = (unsigned long)pulses[index] * (unsigned long)(multiply == 0 ? 1 : multiply);
+        int written = snprintf_P(
+          record.command + offset,
+          sizeof(record.command) - offset,
+          index == 1 ? PSTR("%lu") : PSTR(",%lu"),
+          pulse_us
+        );
+        if(written < 0 || offset + (size_t) written >= sizeof(record.command) - 3) {
+          record.truncated = true;
+          break;
+        }
+        offset += written;
+      }
+
+      if(record.truncated) {
+        record.command[0] = 0;
+      } else if(offset < sizeof(record.command) - 3) {
+        record.command[offset++] = ']';
+        record.command[offset++] = '}';
+        record.command[offset] = 0;
+        record.truncated = commandWasTrimmed;
+      } else {
+        record.command[0] = 0;
+        record.truncated = true;
+      }
+
+      rawRfLearningArmed = false;
+      rawRfLearningExpiresAt = 0;
+
+#ifndef RFLINK_PORTAL_DISABLED
+      RFLink::Portal::broadcastRfEvent(
+        record.sequence,
+        record.millis,
+        record.message,
+        true,
+        record.pulseCount,
+        record.rssi,
+        record.truncated,
+        record.command[0] != 0 ? record.command : nullptr
+      );
+#endif
     }
 
     void sendRawPrint(const char *buf, bool end_of_line) {
@@ -349,6 +546,7 @@ namespace RFLink {
     */
     bool executeCliCommand(char *cmd) {
       static byte ValidCommand = 0;
+      bool commandAccepted = false;
 
       // Copy input command to InputBuffer_Serial, because many plugins are based on it !
       if(cmd != InputBuffer_Serial) { // sometimes we already have the command in the right buffer
@@ -365,11 +563,13 @@ namespace RFLink {
             display_Header();
             display_Name(PSTR("PONG"));
             display_Footer();
+            commandAccepted = true;
           } else if (strncasecmp(cmd + 3, "REBOOT;", 7) == 0) {
             display_Header();
             display_Name(PSTR("REBOOT"));
             display_Footer();
             CallReboot();
+            commandAccepted = true;
           } else if (strncasecmp(cmd + 3, "RFDEBUG=O", 9) == 0) {
             if (cmd[12] == 'N' || cmd[12] == 'n') {
               RFDebug = true;    // full debug on
@@ -385,6 +585,7 @@ namespace RFLink {
               display_Name(PSTR("RFDEBUG=OFF"));
               display_Footer();
             }
+            commandAccepted = true;
           } else if (strncasecmp(cmd + 3, "RFUDEBUG=O", 10) == 0) {
             if (cmd[13] == 'N' || cmd[13] == 'n') {
               RFDebug = false;   // full debug off
@@ -400,6 +601,7 @@ namespace RFLink {
               display_Name(PSTR("RFUDEBUG=OFF"));
               display_Footer();
             }
+            commandAccepted = true;
           } else if (strncasecmp(cmd + 3, "QRFDEBUG=O", 10) == 0) {
             if (cmd[13] == 'N' || cmd[13] == 'n') {
               RFDebug = false;   // full debug off
@@ -415,6 +617,7 @@ namespace RFLink {
               display_Name(PSTR("QRFDEBUG=OFF"));
               display_Footer();
             }
+            commandAccepted = true;
           } else if (strncasecmp(cmd + 3, "QRFUDEBUG=O", 11) == 0) {
             if (cmd[14] == 'N' || cmd[14] == 'n') {
               RFDebug = false;  // full debug off
@@ -430,14 +633,17 @@ namespace RFLink {
               display_Name(PSTR("QRFUDEBUG=OFF"));
               display_Footer();
             }
+            commandAccepted = true;
           } else if (strncasecmp(cmd + 3, "VERSION", 7) == 0) {
             display_Header();
             display_Splash();
             display_Footer();
+            commandAccepted = true;
           } else if (strncasecmp(cmd + 3, "signal", 6) == 0) {
-            Signal::executeCliCommand(cmd + 3 + 6 + 1);
+            commandAccepted = Signal::executeCliCommand(cmd + 3 + 6 + 1);
           } else if (strncasecmp(cmd + 3, "config", 6) == 0) {
             Config::executeCliCommand(cmd + 3 + 6 + 1);
+            commandAccepted = true;
           } else {
             // -------------------------------------------------------
             // Handle Generic Commands / Translate protocol data into Nodo text commands
@@ -453,6 +659,7 @@ namespace RFLink {
                 ValidCommand = 1;
               else // Answer that an invalid command was received?
                 ValidCommand = 2;
+              commandAccepted = ValidCommand == 1;
 
               Radio::set_Radio_mode(Radio::Radio_RX);
             }
@@ -470,7 +677,7 @@ namespace RFLink {
       ValidCommand = 0;
       sendMsgFromBuffer(); // in case there is a response waiting to be sent
       resetSerialBuffer();
-      return true;
+      return commandAccepted;
     }
 
     void scheduleReboot(unsigned int seconds) {
@@ -480,7 +687,6 @@ namespace RFLink {
 
     void getStatusJsonString(JsonObject &output) {
 
-      char buffer[90];
       struct timeval now;
 
       #ifdef ESP8266
@@ -505,11 +711,37 @@ namespace RFLink {
       output["heap_frag"] = ESP.getHeapFragmentation();
       output["stack_free_cont"] = ESP.getFreeContStack();
       output["free_block_max_size"] = ESP.getMaxFreeBlockSize();
+      // Why the chip last reset. On an exception/WDT this carries the crash
+      // cause (and getResetInfo() the EPC/exception details) so a headless
+      // client can diagnose a reboot without a serial console.
+      output["reset_reason"] = ESP.getResetReason();
+      output["reset_info"] = ESP.getResetInfo();
+#endif
+#ifdef ESP32
+      output["reset_reason"] = (int) esp_reset_reason();
 #endif
 
-      sprintf_P(buffer, PSTR("RFLink_ESP_%d.%d-%s"), BUILDNR, REVNR, PSTR(RFLINK_BUILDNAME));
-      output["sw_version"] = buffer;
+      output["sw_version"] = F(RFLINK_FIRMWARE_VERSION);
+      output["build_name"] = F(RFLINK_BUILDNAME);
       output["hardware"] = F(RFLINK_HARDWARE_NAME);
+      output["rf_event_cursor"] = getRfEventCursor();
+      output["raw_learning_armed"] = rawRfLearningArmed;
+      output["update_pending"] = RFLink::UpdateSecurity::isPending();
+      if(RFLink::UpdateSecurity::lastError()[0] != 0)
+        output["update_error"] = RFLink::UpdateSecurity::lastError();
+      output["tx_started_count"] = RFLink::Signal::runtime::txStartedCount;
+      output["tx_finished_count"] = RFLink::Signal::runtime::txFinishedCount;
+      output["tx_failed_count"] = RFLink::Signal::runtime::txFailedCount;
+      output["tx_last_started_ms"] = RFLink::Signal::runtime::txLastStartedMs;
+      output["tx_last_finished_ms"] = RFLink::Signal::runtime::txLastFinishedMs;
+      output["tx_last_elapsed_ms"] = RFLink::Signal::runtime::txLastElapsedMs;
+      output["tx_last_estimated_ms"] = RFLink::Signal::runtime::txLastEstimatedMs;
+      output["tx_last_pulses"] = RFLink::Signal::runtime::txLastPulses;
+      output["tx_last_repeats"] = RFLink::Signal::runtime::txLastRepeats;
+      output["tx_last_delay"] = RFLink::Signal::runtime::txLastDelay;
+      output["tx_last_multiply"] = RFLink::Signal::runtime::txLastMultiply;
+      if(RFLink::Signal::runtime::txLastError[0] != 0)
+        output["tx_last_error"] = RFLink::Signal::runtime::txLastError;
     }
 
 }

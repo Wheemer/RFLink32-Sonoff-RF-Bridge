@@ -1,0 +1,31 @@
+send_raw:
+  name: Send raw RFLink32 command
+  description: Send a raw RFLink32 command to the RF Bridge over WebSocket.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: RF Bridge config entry ID. Required when multiple RF Bridges are configured.
+      selector:
+        text:
+    command:
+      name: Command
+      required: true
+      example: "10;signal;sendRF;..."
+      selector:
+        text:
+
+send_named:
+  name: Send named RFLink32 command
+  description: Send a configured RFLink32 command directly to the RF Bridge over WebSocket.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: RF Bridge config entry ID. Required when multiple RF Bridges are configured.
+      selector:
+        text:
+    command_key:
+      name: Command key
+      required: true
+      example: fit_start
+      selector:
+        text:

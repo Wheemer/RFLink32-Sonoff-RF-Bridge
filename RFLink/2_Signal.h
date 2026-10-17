@@ -14,7 +14,7 @@
 #ifdef ESP32
 #define RAW_BUFFER_SIZE 1200        // 292        // Maximum number of pulses that is received in one go.
 #else
-#define RAW_BUFFER_SIZE 292        // 292        // Maximum number of pulses that is received in one go.
+#define RAW_BUFFER_SIZE 512        // Sonoff RF Bridge raw sends include hood commands >292 pulses.
 #endif
 #define MIN_RAW_PULSES 24          // 24         // Minimal number of bits that need to have been received before we spend CPU time on decoding the signal.
 #define SIGNAL_SEEK_TIMEOUT_MS 25  // 25         // After this time in mSec, RF signal will be considered absent.
@@ -59,8 +59,8 @@ namespace RFLink {
     struct RawSignalStruct // Raw signal variabelen places in a struct
     {
       int Number;                       // Number of pulses, times two as every pulse has a mark and a space.
-      byte Repeats;                     // Number of re-transmits on transmit actions.
-      byte Delay;                       // Delay in ms. after transmit of a single RF pulse packet
+      uint16_t Repeats;                     // Number of re-transmits on transmit actions.
+      uint16_t Delay;                       // Delay in ms. after transmit of a single RF pulse packet
       byte Multiply;                    // Pulses[] * Multiply is the real pulse time in microseconds (to keep compatibility with Arduino)
       unsigned long Time;               // Timestamp indicating when the signal was received (millis())
       bool readyForDecoder;             // indicates if packet can be processed by decoders
@@ -92,6 +92,18 @@ namespace RFLink {
     namespace runtime {
       extern bool verboseSignalFetchLoop;
       extern Slicer_enum appliedSlicer;
+      extern unsigned long int txStartedCount;
+      extern unsigned long int txFinishedCount;
+      extern unsigned long int txFailedCount;
+      extern unsigned long int txLastStartedMs;
+      extern unsigned long int txLastFinishedMs;
+      extern unsigned long int txLastElapsedMs;
+      extern unsigned long int txLastEstimatedMs;
+      extern unsigned int txLastPulses;
+      extern unsigned int txLastRepeats;
+      extern unsigned int txLastDelay;
+      extern unsigned int txLastMultiply;
+      extern char txLastError[48];
     }
 
     namespace counters {
@@ -108,9 +120,10 @@ namespace RFLink {
     void RawSendRF(RawSignalStruct *signal);
     void AC_Send(unsigned long data, byte cmd);
 
-    void executeCliCommand(char *cmd);
+    bool executeCliCommand(char *cmd);
 
     bool ScanEvent();
+
     void getStatusJsonString(JsonObject &output);
 
     void displaySignal(RawSignalStruct &signal);
