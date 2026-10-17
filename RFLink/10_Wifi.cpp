@@ -682,6 +682,7 @@ namespace RFLink { namespace Wifi {
 
         void eventHandler_WiFiStationLostIp(WiFiEvent_t event, WiFiEventInfo_t info) {
           Serial.println("WiFi Client has lost its IP");
+          stopMdnsDiscovery();
         }
 #endif //ESP32
 
@@ -714,6 +715,7 @@ void eventHandler_WiFiStationGotIp(const WiFiEventStationModeGotIP& evt) {
 WiFiEventHandler e3;
 void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected& evt) {
   Serial.println(F("WiFi Client has been disconnected"));
+  stopMdnsDiscovery();
 }
 #endif
 
