@@ -49,6 +49,8 @@ def main() -> None:
         "delayLongPulse(low_us);",
         "uint64_t estimated_us = 0;",
         "if(estimated_ms > 120000ULL)",
+        "const bool firstPulse = RawSignal.Number == 0;",
+        "if (firstPulse && pulseLength_us < SIGNAL_MIN_PREAMBLE_US)",
     ):
         require(signal, call)
 
