@@ -547,7 +547,7 @@ namespace RFLink { namespace Portal {
         void broadcastRfEvent(uint32_t sequence, unsigned long eventMillis, const char *message,
                               bool raw, int pulseCount, int rssi, bool truncated,
                               const char *command) {
-          if(apiWebSocket.count() == 0)
+          if(apiWebSocket.count() == 0 || !apiWebSocket.availableForWriteAll())
             return;
 
           if(!buildRfEventJson(sequence, eventMillis, message, raw, pulseCount, rssi,
@@ -556,6 +556,9 @@ namespace RFLink { namespace Portal {
                                  true, command, false))
               return;
           }
+          // The library allocates a shared buffer for textAll(). Queue space
+          // was checked above; a concurrent full queue drops this event rather
+          // than disconnecting a client and creating reconnect heap churn.
           apiWebSocket.textAll(wsOutbound);
         }
 
@@ -563,7 +566,7 @@ namespace RFLink { namespace Portal {
                                  int pulseCount, byte repeat, byte delay,
                                  byte multiply, int rssi, bool pulseCountTrimmed,
                                  const uint16_t *pulses) {
-          if(apiWebSocket.count() == 0 || pulses == nullptr)
+          if(apiWebSocket.count() == 0 || pulses == nullptr || !apiWebSocket.availableForWriteAll())
             return;
 
           bool canIncludeCommand = pulseCount >= 2;
