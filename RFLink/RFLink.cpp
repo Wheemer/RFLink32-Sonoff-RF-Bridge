@@ -579,6 +579,39 @@ namespace RFLink {
 #endif
     }
 
+#if defined(ESP8266)
+    const __FlashStringHelper *resetReasonText(uint32_t reason) {
+      switch (reason) {
+        case REASON_DEFAULT_RST:      return F("Power On");
+        case REASON_WDT_RST:          return F("Hardware Watchdog");
+        case REASON_EXCEPTION_RST:    return F("Exception");
+        case REASON_SOFT_WDT_RST:     return F("Software Watchdog");
+        case REASON_SOFT_RESTART:     return F("Software/System restart");
+        case REASON_DEEP_SLEEP_AWAKE: return F("Deep-Sleep Wake");
+        case REASON_EXT_SYS_RST:      return F("External System");
+        default:                      return F("Unknown");
+      }
+    }
+
+    bool isSoftwareRestart(uint32_t reason) {
+      return reason == REASON_SOFT_RESTART;
+    }
+
+    void writeResetInfo(JsonObject &output, const rst_info *info) {
+      const __FlashStringHelper *reason = resetReasonText(info->reason);
+      output["reset_reason"] = reason;
+
+      if (info->reason < REASON_WDT_RST || info->reason > REASON_SOFT_WDT_RST) {
+        output["reset_info"] = reason;
+        return;
+      }
+
+      // Preserve the framework's detailed crash report. This allocation is
+      // only needed for watchdog/exception resets, never normal telemetry.
+      output["reset_info"] = ESP.getResetInfo();
+    }
+#endif
+
     void scheduleReboot(unsigned int seconds, RebootSource source) {
       scheduledRebootAt = millis() + ((unsigned long)seconds * 1000UL);
       scheduledRebootSource = source;
@@ -613,11 +646,10 @@ namespace RFLink {
       // Why the chip last reset. On an exception/WDT this carries the crash
       // cause (and getResetInfo() the EPC/exception details) so a headless
       // client can diagnose a reboot without a serial console.
-      const String resetReason = ESP.getResetReason();
-      output["reset_reason"] = resetReason;
-      output["reset_info"] = ESP.getResetInfo();
+      const rst_info *resetInfo = ESP.getResetInfoPtr();
+      writeResetInfo(output, resetInfo);
       output["last_requested_reboot_source"] =
-        resetReason == F("Software/System restart")
+        isSoftwareRestart(resetInfo->reason)
           ? lastRequestedRebootSource()
           : "unknown";
 #endif
