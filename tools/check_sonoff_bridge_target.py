@@ -22,6 +22,8 @@ def main() -> None:
     wifi = ROOT / "RFLink" / "10_Wifi.cpp"
     core = ROOT / "RFLink" / "RFLink.cpp"
     update = ROOT / "RFLink" / "13_Update.cpp"
+    serial = ROOT / "RFLink" / "3_Serial.h"
+    integration = ROOT / "custom_components" / "rf_bridge" / "__init__.py"
 
     for setting in (
         "[env:sonoff_bridge]",
@@ -38,6 +40,16 @@ def main() -> None:
         require(radio, setting)
 
     require(api, "#define RFLINK_API_PORT 8080")
+    require(serial, "#define INPUT_COMMAND_SIZE 2000")
+    require(websocket, "char command[INPUT_COMMAND_SIZE] = {0};")
+    require(websocket, "if(info->index + len >= sizeof(activeJob.command))")
+    for setting in (
+        "INPUT_COMMAND_SIZE = 2000",
+        "WS_INBOUND_SIZE = INPUT_COMMAND_SIZE + 128",
+        "if len(command) >= INPUT_COMMAND_SIZE - 1:",
+        "if ws_envelope_len >= WS_INBOUND_SIZE:",
+    ):
+        require(integration, setting)
     require(wifi, "bool stationGotIpPending = false;")
     require(wifi, "bool stationDisconnectedPending = false;")
     require(wifi, "void processStationGotIp()")
