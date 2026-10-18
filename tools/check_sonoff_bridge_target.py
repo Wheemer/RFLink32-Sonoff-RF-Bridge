@@ -56,6 +56,8 @@ def main() -> None:
     require(wifi, "void processStationDisconnected()")
     if wifi.read_text(encoding="utf-8").count("stationGotIpPending = true;") != 2:
         raise SystemExit("Both WiFi got-IP callbacks must defer work to the main loop")
+    if wifi.read_text(encoding="utf-8").count("RFLink::Portal::notifyNetworkReady();") != 1:
+        raise SystemExit("WiFi callbacks must not run API listener work directly")
     if wifi.read_text(encoding="utf-8").count("stationDisconnectedPending = true;") != 2:
         raise SystemExit("Both WiFi disconnect callbacks must defer work to the main loop")
 

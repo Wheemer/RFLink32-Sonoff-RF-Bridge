@@ -616,6 +616,11 @@ namespace RFLink { namespace Wifi {
             return;
 
           stationGotIpPending = false;
+          Serial.print(F("WiFi Client has received a new IP: "));
+          Serial.println(WiFi.localIP());
+#ifndef RFLINK_PORTAL_DISABLED
+          RFLink::Portal::notifyNetworkReady();
+#endif
           if(params::client_enabled && WiFi.isConnected() && (WiFi.getMode() & WIFI_AP) != 0)
             requestSetupAccessPointShutdown();
           if((WiFi.getMode() & WIFI_AP) == 0)
@@ -713,11 +718,6 @@ void eventHandler_WiFiStationConnected(const WiFiEventSoftAPModeStationConnected
 }
 WiFiEventHandler e2;
 void eventHandler_WiFiStationGotIp(const WiFiEventStationModeGotIP& evt) {
-  Serial.printf_P(PSTR("WiFi Client has received a new IP: %s\r\n"), WiFi.localIP().toString().c_str());
-  Serial.flush();
-#ifndef RFLINK_PORTAL_DISABLED
-  RFLink::Portal::notifyNetworkReady();
-#endif
   stationGotIpPending = true;
 }
 WiFiEventHandler e3;
