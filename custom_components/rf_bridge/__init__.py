@@ -46,6 +46,7 @@ WS_COMMAND_TIMEOUT = 130
 WS_ACTION_TIMEOUT = 30
 WS_RECONNECT_SECONDS = 5
 WS_CONNECTION_WAIT_SECONDS = 8
+FIRMWARE_UPDATE_CONNECTION_WAIT_SECONDS = 45
 WS_MIN_COMMAND_TIMEOUT = 8
 WS_COMMAND_TIMEOUT_MARGIN = 10
 SENDRF_PREFIX = "10;signal;sendRF;"
@@ -356,9 +357,9 @@ class RFBridgeHub:
                 self.status = status
                 self.last_status_at = dt_util.utcnow().isoformat()
                 live_version = status.get(CONF_SW_VERSION)
-                if isinstance(live_version, str) and live_version != self.entry.data.get(
-                    CONF_SW_VERSION
-                ):
+                if isinstance(
+                    live_version, str
+                ) and live_version != self.entry.data.get(CONF_SW_VERSION):
                     device_registry = dr.async_get(self.hass)
                     identifiers = self.entry.data.get(CONF_IDENTIFIERS) or [
                         self.entry.entry_id
@@ -416,12 +417,14 @@ class RFBridgeHub:
         self.async_write_diagnostics()
 
     async def _ws_request(
-        self, payload: dict[str, Any], *, timeout: float
+        self,
+        payload: dict[str, Any],
+        *,
+        timeout: float,
+        connection_timeout: float = WS_CONNECTION_WAIT_SECONDS,
     ) -> dict[str, Any]:
         try:
-            await asyncio.wait_for(
-                self._ws_ready.wait(), timeout=WS_CONNECTION_WAIT_SECONDS
-            )
+            await asyncio.wait_for(self._ws_ready.wait(), timeout=connection_timeout)
         except TimeoutError as err:
             raise ServiceValidationError(
                 f"RF Bridge WebSocket did not reconnect for {self.host}"
@@ -568,6 +571,7 @@ class RFBridgeHub:
         result = await self._ws_request(
             {"type": "update", "url": url},
             timeout=WS_ACTION_TIMEOUT,
+            connection_timeout=FIRMWARE_UPDATE_CONNECTION_WAIT_SECONDS,
         )
         if result.get("type") != "update_scheduled" or result.get("ok") is not True:
             message = result.get("message") or "Update request was rejected"
@@ -793,7 +797,9 @@ def validate_sendrf_command(command: str) -> None:
         raise ValueError("sendRF command exceeds firmware command buffer")
 
     ws_envelope_len = len(
-        json.dumps({"type": "command", "id": 1, CONF_COMMAND: command}, separators=(",", ":"))
+        json.dumps(
+            {"type": "command", "id": 1, CONF_COMMAND: command}, separators=(",", ":")
+        )
     )
     if ws_envelope_len >= WS_INBOUND_SIZE:
         raise ValueError("sendRF command exceeds firmware WebSocket input buffer")
@@ -811,7 +817,9 @@ def validate_sendrf_command(command: str) -> None:
     if len(pulses) > RAW_BUFFER_SIZE:
         raise ValueError(f"sendRF command has more than {RAW_BUFFER_SIZE} pulses")
     if len(pulses) % 2:
-        raise ValueError("sendRF command has an odd pulse count; RFLink32 would drop the final pulse")
+        raise ValueError(
+            "sendRF command has an odd pulse count; RFLink32 would drop the final pulse"
+        )
 
     longest_pulse = 0
     estimated_us = 0
@@ -834,7 +842,9 @@ def validate_sendrf_command(command: str) -> None:
     if not isinstance(delay, int) or delay < 0 or delay > 10000:
         raise ValueError("sendRF delay must be an integer from 0 to 10000 ms")
     if "multiply" in payload:
-        raise ValueError("sendRF multiply is not accepted; firmware calculates scaling itself")
+        raise ValueError(
+            "sendRF multiply is not accepted; firmware calculates scaling itself"
+        )
     estimated_ms = ((estimated_us // 1000) * (repeat + 1)) + (delay * repeat)
     if estimated_ms > MAX_TX_MS:
         raise ValueError("sendRF estimated transmit time is too long")
