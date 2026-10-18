@@ -312,7 +312,6 @@ class RFBridgeHub:
                 async with session.ws_connect(
                     self.ws_url,
                     timeout=WS_CONNECT_TIMEOUT,
-                    heartbeat=30,
                 ) as ws:
                     self._ws = ws
                     self._mark_reachable()
