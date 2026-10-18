@@ -14,7 +14,7 @@ CONF_SW_VERSION = "sw_version"
 
 DEFAULT_API_PORT = 8080
 
-PLATFORMS = ["button", "event", "sensor", "update"]
+PLATFORMS = ["button", "event", "binary_sensor", "sensor", "update"]
 
 SERVICE_SEND_NAMED = "send_named"
 SERVICE_SEND_RAW = "send_raw"
