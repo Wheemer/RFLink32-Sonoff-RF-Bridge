@@ -8,9 +8,10 @@ from pathlib import Path
 
 FLASH_SECTOR_SIZE = 0x1000
 LEGACY_FS_START = 0xBB000
-OTA_FS_START = 0xEB000
+TARGET_FS_START = 0xF3000
 RSA_2048_SIGNATURE_TRAILER_BYTES = 256 + 4
 COMPRESSOR_VARIANCE_GUARD_BYTES = 512
+MINIMUM_OTA_MARGIN_BYTES = 16 * 1024
 
 
 def align_up(value: int) -> int:
@@ -40,11 +41,13 @@ def main() -> None:
         + RSA_2048_SIGNATURE_TRAILER_BYTES
         + COMPRESSOR_VARIANCE_GUARD_BYTES
     )
-    free_sketch_space = OTA_FS_START - align_up(firmware_size)
+    free_sketch_space = TARGET_FS_START - align_up(firmware_size)
     update_capacity = align_down(free_sketch_space - FLASH_SECTOR_SIZE)
-    if signed_update_size > update_capacity:
+    staging_margin = update_capacity - signed_update_size
+    if staging_margin < MINIMUM_OTA_MARGIN_BYTES:
         raise SystemExit(
-            "Signed compressed firmware does not fit the OTA staging region: "
+            "Signed compressed firmware does not leave the required "
+            f"{MINIMUM_OTA_MARGIN_BYTES}-byte OTA staging margin: "
             f"{signed_update_size} bytes required, {update_capacity} available."
         )
 
@@ -53,7 +56,7 @@ def main() -> None:
     print(f"compressed_firmware_bytes={compressed_size}")
     print(f"signed_update_guarded_bytes={signed_update_size}")
     print(f"ota_staging_capacity_bytes={update_capacity}")
-    print(f"ota_staging_margin_bytes={update_capacity - signed_update_size}")
+    print(f"ota_staging_margin_bytes={staging_margin}")
 
 
 if __name__ == "__main__":

@@ -2,8 +2,7 @@
 
 #if defined(ESP8266)
 #include <BearSSLHelpers.h>
-#include <ESP8266WiFi.h>
-#include <Updater.h>
+#include <ESP8266httpUpdate.h>
 
 #include "12_Portal.h"
 #include "2_Signal.h"
@@ -11,11 +10,8 @@
 
 namespace {
   constexpr size_t MAX_UPDATE_URL_BYTES = 384;
-  constexpr size_t MAX_UPDATE_HOST_BYTES = 96;
-  constexpr size_t HTTP_LINE_BYTES = 192;
-  constexpr size_t UPDATE_BUFFER_BYTES = 512;
   constexpr unsigned long UPDATE_START_DELAY_MS = 500;
-  constexpr unsigned long HTTP_READ_TIMEOUT_MS = 8000;
+  constexpr unsigned int HTTP_UPDATE_TIMEOUT_MS = 15000;
 
   BearSSL::PublicKey updateSigningPublicKey(signing_pubkey);
   BearSSL::HashSHA256 updateSigningHash;
@@ -25,146 +21,24 @@ namespace {
   unsigned long updateStartMillis = 0;
   bool updatePending = false;
 
-  bool readHttpLine(WiFiClient &client, char *line, size_t lineSize)
-  {
-    size_t length = 0;
-    const unsigned long deadline = millis() + HTTP_READ_TIMEOUT_MS;
-    while((long)(millis() - deadline) < 0) {
-      while(client.available()) {
-        const char value = static_cast<char>(client.read());
-        if(value == '\n') {
-          if(length > 0 && line[length - 1] == '\r')
-            length--;
-          line[length] = 0;
-          return true;
-        }
-        if(length + 1 >= lineSize)
-          return false;
-        line[length++] = value;
-      }
-      if(!client.connected())
-        return false;
-      delay(1);
-      yield();
-    }
-    return false;
-  }
-
-  bool parseHttpUrl(const char *url, char *host, size_t hostSize, uint16_t &port, const char *&path)
-  {
-    const char *authority = url + 7;
-    const char *pathStart = strchr(authority, '/');
-    const char *authorityEnd = pathStart == nullptr ? authority + strlen(authority) : pathStart;
-    const char *colon = nullptr;
-    for(const char *cursor = authority; cursor < authorityEnd; cursor++) {
-      if(*cursor == ':')
-        colon = cursor;
-    }
-    const char *hostEnd = colon == nullptr ? authorityEnd : colon;
-    const size_t hostLength = hostEnd - authority;
-    if(hostLength == 0 || hostLength >= hostSize)
-      return false;
-    memcpy(host, authority, hostLength);
-    host[hostLength] = 0;
-
-    port = 80;
-    if(colon != nullptr) {
-      char *end = nullptr;
-      const unsigned long parsedPort = strtoul(colon + 1, &end, 10);
-      if(end != authorityEnd || parsedPort == 0 || parsedPort > 65535)
-        return false;
-      port = static_cast<uint16_t>(parsedPort);
-    }
-    path = pathStart == nullptr ? "/" : pathStart;
-    return true;
-  }
-
   bool fetchAndApplyUpdate(const char *url, char *error, size_t errorSize)
   {
-    char host[MAX_UPDATE_HOST_BYTES];
-    uint16_t port = 80;
-    const char *path = nullptr;
-    if(!parseHttpUrl(url, host, sizeof(host), port, path)) {
-      snprintf(error, errorSize, "Invalid update URL");
-      return false;
-    }
-
+    ESP8266HTTPUpdate updater(HTTP_UPDATE_TIMEOUT_MS);
+    updater.rebootOnUpdate(false);
+    updater.closeConnectionsOnUpdate(false);
     WiFiClient client;
-    if(!client.connect(host, port)) {
-      snprintf(error, errorSize, "Update server connection failed");
-      return false;
-    }
-    client.printf_P(PSTR("GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n"), path, host);
+    const t_httpUpdate_return result = updater.update(
+      client, String(url), String(RFLINK_FIRMWARE_VERSION)
+    );
+    if(result == HTTP_UPDATE_OK)
+      return true;
 
-    char line[HTTP_LINE_BYTES];
-    if(!readHttpLine(client, line, sizeof(line)) || strncmp(line, "HTTP/1.1 200", 12) != 0) {
-      snprintf(error, errorSize, "Update server did not return 200");
-      client.stop();
-      return false;
-    }
-
-    size_t contentLength = 0;
-    bool hasLength = false;
-    while(readHttpLine(client, line, sizeof(line))) {
-      if(line[0] == 0)
-        break;
-      if(strncasecmp(line, "Content-Length:", 15) == 0) {
-        char *end = nullptr;
-        const unsigned long parsedLength = strtoul(line + 15, &end, 10);
-        if(end == line + 15 || *end != 0 || parsedLength == 0) {
-          snprintf(error, errorSize, "Invalid update length");
-          client.stop();
-          return false;
-        }
-        contentLength = parsedLength;
-        hasLength = true;
-      }
-    }
-    if(!hasLength) {
-      snprintf(error, errorSize, "Update server omitted length");
-      client.stop();
-      return false;
-    }
-    if(!Update.begin(contentLength)) {
-      snprintf(error, errorSize, "Update image does not fit");
-      client.stop();
-      return false;
-    }
-
-    uint8_t buffer[UPDATE_BUFFER_BYTES];
-    size_t remaining = contentLength;
-    unsigned long deadline = millis() + HTTP_READ_TIMEOUT_MS;
-    while(remaining > 0) {
-      const size_t available = client.available();
-      if(available == 0) {
-        if((long)(millis() - deadline) >= 0) {
-          Update.end();
-          snprintf(error, errorSize, "Timed out receiving update");
-          client.stop();
-          return false;
-        }
-        delay(1);
-        yield();
-        continue;
-      }
-      const size_t wanted = min(remaining, min(available, sizeof(buffer)));
-      const size_t received = client.read(buffer, wanted);
-      if(received == 0 || Update.write(buffer, received) != received) {
-        Update.end();
-        snprintf(error, errorSize, "Failed writing update");
-        client.stop();
-        return false;
-      }
-      remaining -= received;
-      deadline = millis() + HTTP_READ_TIMEOUT_MS;
-      yield();
-    }
-    client.stop();
-    if(!Update.end()) {
-      snprintf(error, errorSize, "Update signature verification failed");
-      return false;
-    }
-    return true;
+    const String detail = updater.getLastErrorString();
+    snprintf(
+      error, errorSize, "HTTP OTA failed (%d): %s",
+      updater.getLastError(), detail.c_str()
+    );
+    return false;
   }
 }
 

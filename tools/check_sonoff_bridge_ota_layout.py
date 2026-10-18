@@ -11,9 +11,11 @@ Import("env")
 
 FLASH_SECTOR_SIZE = 0x1000
 LEGACY_FS_START = 0xBB000
-OTA_FS_START = 0xEB000
+CURRENT_FS_START = 0xEB000
+TARGET_FS_START = 0xF3000
 RSA_2048_SIGNATURE_TRAILER_BYTES = 256 + 4
 COMPRESSOR_VARIANCE_GUARD_BYTES = 512
+MINIMUM_OTA_MARGIN_BYTES = 16 * 1024
 
 
 def _align_up(value: int) -> int:
@@ -42,18 +44,20 @@ def validate_ota_layout(source, target, env):
         + RSA_2048_SIGNATURE_TRAILER_BYTES
         + COMPRESSOR_VARIANCE_GUARD_BYTES
     )
-    free_sketch_space = OTA_FS_START - _align_up(firmware_size)
+    free_sketch_space = TARGET_FS_START - _align_up(firmware_size)
     update_capacity = _align_down(free_sketch_space - FLASH_SECTOR_SIZE)
-    if signed_update_size > update_capacity:
+    staging_margin = update_capacity - signed_update_size
+    if staging_margin < MINIMUM_OTA_MARGIN_BYTES:
         raise RuntimeError(
-            "Sonoff RF Bridge signed compressed image exceeds OTA staging capacity: "
-            f"{signed_update_size} required, {update_capacity} available."
+            "Sonoff RF Bridge signed compressed image does not leave the required "
+            f"{MINIMUM_OTA_MARGIN_BYTES}-byte OTA margin: {signed_update_size} required, "
+            f"{update_capacity} available."
         )
 
     print(
         "Sonoff RF Bridge OTA layout: "
         f"firmware={firmware_size}, signed_update={signed_update_size}, "
-        f"staging_margin={update_capacity - signed_update_size} bytes"
+        f"staging_margin={staging_margin} bytes"
     )
 
 

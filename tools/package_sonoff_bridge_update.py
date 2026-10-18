@@ -10,9 +10,10 @@ import subprocess
 from pathlib import Path
 
 FLASH_SECTOR_SIZE = 0x1000
-OTA_FS_START = 0xEB000
+OTA_FS_START = 0xF3000
 RSA_2048_SIGNATURE_BYTES = 256
 RSA_2048_SIGNATURE_TRAILER_BYTES = RSA_2048_SIGNATURE_BYTES + 4
+MINIMUM_OTA_MARGIN_BYTES = 16 * 1024
 
 
 def align_up(value: int) -> int:
@@ -70,8 +71,13 @@ def main() -> None:
     )
 
     signed_size = signed.stat().st_size
-    if signed_size > update_capacity(firmware.stat().st_size):
-        raise SystemExit("Exact signed artifact exceeds OTA staging capacity.")
+    staging_capacity = update_capacity(firmware.stat().st_size)
+    staging_margin = staging_capacity - signed_size
+    if staging_margin < MINIMUM_OTA_MARGIN_BYTES:
+        raise SystemExit(
+            "Exact signed artifact does not leave the required "
+            f"{MINIMUM_OTA_MARGIN_BYTES}-byte OTA staging margin."
+        )
 
     with signed.open("rb") as signed_file:
         signed_file.seek(-4, 2)
@@ -108,8 +114,8 @@ def main() -> None:
     print(f"compressed={compressed}")
     print(f"signed={signed}")
     print(f"signed_bytes={signed_size}")
-    print(f"ota_staging_capacity_bytes={update_capacity(firmware.stat().st_size)}")
-    print(f"ota_staging_margin_bytes={update_capacity(firmware.stat().st_size) - signed_size}")
+    print(f"ota_staging_capacity_bytes={staging_capacity}")
+    print(f"ota_staging_margin_bytes={staging_margin}")
 
 
 if __name__ == "__main__":

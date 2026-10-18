@@ -68,22 +68,24 @@ namespace RFLink
 
 #ifdef ESP8266
     namespace {
-      // Earlier bridge builds used eagle.flash.1m256.ld. On a one-megabyte
-      // ESP8285 that LittleFS volume starts at 0xBB000 and ends at 0xFB000.
-      // The OTA layout uses 0xEB000..0xFB000 instead. Mount the old location
-      // without auto-formatting only long enough to copy a valid config.
+      // Preserve persistent configuration when changing the ESP8285 layout.
+      // Each previous filesystem is mounted without auto-formatting and copied
+      // only after its configuration has been validated in memory.
       constexpr uint32_t LEGACY_FS_START = 0xBB000;
       constexpr uint32_t LEGACY_FS_SIZE = 0x40000;
+      constexpr uint32_t OTA64_FS_START = 0xEB000;
+      constexpr uint32_t OTA64_FS_SIZE = 0x10000;
       constexpr uint32_t LEGACY_FS_PAGE_SIZE = 0x100;
       constexpr uint32_t LEGACY_FS_BLOCK_SIZE = 0x1000;
       constexpr uint32_t LEGACY_FS_MAX_OPEN_FILES = 5;
       constexpr size_t MAX_LEGACY_CONFIG_BYTES = 8192;
+      constexpr size_t RTS_CONFIG_BYTES = 160;
 
-      bool migrateLegacyConfigToOtaLayout()
+      bool migrateConfigFromFilesystem(uint32_t sourceStart, uint32_t sourceSize)
       {
         fs::FS legacyFs(fs::FSImplPtr(new littlefs_impl::LittleFSImpl(
-          LEGACY_FS_START,
-          LEGACY_FS_SIZE,
+          sourceStart,
+          sourceSize,
           LEGACY_FS_PAGE_SIZE,
           LEGACY_FS_BLOCK_SIZE,
           LEGACY_FS_MAX_OPEN_FILES
@@ -107,11 +109,27 @@ namespace RFLink
         doc.clear();
         DeserializationError error = deserializeJson(doc, legacyFile);
         legacyFile.close();
-        legacyFs.end();
         if(error || !doc.is<JsonObject>()) {
+          legacyFs.end();
           doc.clear();
           return false;
         }
+
+        uint8_t rtsConfig[RTS_CONFIG_BYTES];
+        size_t rtsConfigBytes = 0;
+        File rtsFile = legacyFs.open(F("/rts.bin"), "r");
+        if(rtsFile) {
+          rtsConfigBytes = rtsFile.size();
+          if(rtsConfigBytes > sizeof(rtsConfig) ||
+             rtsFile.read(rtsConfig, rtsConfigBytes) != rtsConfigBytes) {
+            rtsFile.close();
+            legacyFs.end();
+            doc.clear();
+            return false;
+          }
+          rtsFile.close();
+        }
+        legacyFs.end();
 
         if(!LittleFS.format() || !LittleFS.begin()) {
           doc.clear();
@@ -125,8 +143,23 @@ namespace RFLink
         }
         const size_t written = serializeJson(doc, destination);
         destination.close();
+        if(written == 0) {
+          doc.clear();
+          return false;
+        }
+        if(rtsConfigBytes > 0) {
+          File rtsDestination = LittleFS.open(F("/rts.bin"), "w");
+          if(!rtsDestination ||
+             rtsDestination.write(rtsConfig, rtsConfigBytes) != rtsConfigBytes) {
+            if(rtsDestination)
+              rtsDestination.close();
+            doc.clear();
+            return false;
+          }
+          rtsDestination.close();
+        }
         doc.clear();
-        return written > 0;
+        return true;
       }
 
       bool mountPersistentFilesystem()
@@ -137,9 +170,10 @@ namespace RFLink
         if(LittleFS.begin())
           return true;
 
-        Serial.println(F("No OTA-layout filesystem; checking legacy config..."));
-        if(migrateLegacyConfigToOtaLayout()) {
-          Serial.println(F("Migrated legacy configuration to OTA layout."));
+        Serial.println(F("No current-layout filesystem; checking prior layouts..."));
+        if(migrateConfigFromFilesystem(OTA64_FS_START, OTA64_FS_SIZE) ||
+           migrateConfigFromFilesystem(LEGACY_FS_START, LEGACY_FS_SIZE)) {
+          Serial.println(F("Migrated persistent configuration to current layout."));
           return true;
         }
 
