@@ -207,7 +207,6 @@ namespace RFLink::UpdateSecurity {
     RFLink::Signal::RawSignal.readyForDecoder = false;
     RFLink::Signal::RawSignal.Number = 0;
     RFLink::Signal::RawSignal.Time = 0;
-    RFLink::Portal::closeWebSocketClients();
     if(!fetchAndApplyUpdate(pendingUpdateUrl, updateLastError, sizeof(updateLastError))) {
       Serial.print(F("Signed update failed: "));
       Serial.println(updateLastError);
