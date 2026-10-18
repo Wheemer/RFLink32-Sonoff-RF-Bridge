@@ -294,7 +294,7 @@ class RFBridgeFirmwareUpdate(UpdateEntity):
                     reported_error = status.get("update_error")
                     if isinstance(reported_error, str) and reported_error:
                         update_error = reported_error
-                except (aiohttp.ClientError, ServiceValidationError) as err:
+                except (aiohttp.ClientError, HomeAssistantError) as err:
                     _LOGGER.debug(
                         "Could not obtain RF Bridge update failure detail: %s", err
                     )
