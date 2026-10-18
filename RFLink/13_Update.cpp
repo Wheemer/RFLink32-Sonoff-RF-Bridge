@@ -6,6 +6,7 @@
 #include <Updater.h>
 
 #include "12_Portal.h"
+#include "2_Signal.h"
 #include "Updater_Signing.h"
 
 namespace {
@@ -200,10 +201,18 @@ namespace RFLink::UpdateSecurity {
       return;
 
     updatePending = false;
+    const bool resumeScanning = !RFLink::Signal::AsyncSignalScanner::isStopped();
+    RFLink::Signal::AsyncSignalScanner::stopScanning();
+    RFLink::Signal::AsyncSignalScanner::nextPulseTimeoutTime_us = 0;
+    RFLink::Signal::RawSignal.readyForDecoder = false;
+    RFLink::Signal::RawSignal.Number = 0;
+    RFLink::Signal::RawSignal.Time = 0;
     RFLink::Portal::closeWebSocketClients();
     if(!fetchAndApplyUpdate(pendingUpdateUrl, updateLastError, sizeof(updateLastError))) {
       Serial.print(F("Signed update failed: "));
       Serial.println(updateLastError);
+      if(resumeScanning)
+        RFLink::Signal::AsyncSignalScanner::startScanning();
       return;
     }
     RFLink::markRebootSource(RFLink::RebootSource::SignedUpdate);
