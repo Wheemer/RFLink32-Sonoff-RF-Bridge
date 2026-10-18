@@ -1006,6 +1006,7 @@ namespace RFLink
     void RawSendRF(RawSignalStruct *signal)
     {
       int x;
+      const uint32_t started_us = micros();
       unsigned long started_ms = millis();
       runtime::txStartedCount++;
       runtime::txLastStartedMs = started_ms;
@@ -1040,7 +1041,9 @@ namespace RFLink
       Radio::set_Radio_mode(Radio::States::Radio_RX);
       runtime::txFinishedCount++;
       runtime::txLastFinishedMs = millis();
-      runtime::txLastElapsedMs = runtime::txLastFinishedMs - started_ms;
+      // ESP8266 millis() stops while interrupts are held for short RF pulses.
+      // The hardware microsecond clock continues, so it is the truthful TX duration.
+      runtime::txLastElapsedMs = (micros() - started_us) / 1000UL;
     }
 
     const char *skipJsonWhitespace(const char *p)

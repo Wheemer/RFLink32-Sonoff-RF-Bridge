@@ -63,6 +63,8 @@ def main() -> None:
         "void delayLongPulse(unsigned long duration_us)",
         "delayLongPulse(high_us);",
         "delayLongPulse(low_us);",
+        "const uint32_t started_us = micros();",
+        "runtime::txLastElapsedMs = (micros() - started_us) / 1000UL;",
         "uint64_t estimated_us = 0;",
         "if(estimated_ms > 120000ULL)",
         "const bool firstPulse = RawSignal.Number == 0;",
@@ -88,6 +90,8 @@ def main() -> None:
 
     require(websocket, "activeJob.type == WsJobType::Command &&\n                   activeJob.clientId == client->id()")
     require(websocket, "RFLink::resetReasonText(")
+    require(websocket, "const uint32_t startedUs = micros();")
+    require(websocket, "activeJob.elapsedMs = (micros() - startedUs) / 1000UL;")
     if "ESP.getResetReason()" in websocket.read_text(encoding="utf-8"):
         raise SystemExit("WebSocket command telemetry must not allocate reset-reason Strings")
     require(core, "const __FlashStringHelper *resetReasonText(uint32_t reason)")

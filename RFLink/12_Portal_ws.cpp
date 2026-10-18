@@ -537,7 +537,7 @@ namespace RFLink { namespace Portal {
           if(!jobInProgress || activeJob.type == WsJobType::None)
             return;
 
-          unsigned long started = millis();
+          const uint32_t startedUs = micros();
 
           if(activeJob.type == WsJobType::Command) {
             yield();
@@ -559,7 +559,7 @@ namespace RFLink { namespace Portal {
             activeJob.ok = true;
           }
 
-          activeJob.elapsedMs = millis() - started;
+          activeJob.elapsedMs = (micros() - startedUs) / 1000UL;
           wsFinishJob();
         }
 
