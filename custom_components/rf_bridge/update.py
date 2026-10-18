@@ -39,6 +39,7 @@ MANIFEST_TARGET = "modified_sonoff_rf_bridge"
 MAX_FIRMWARE_BYTES = 450_000
 DOWNLOAD_ROUTE = "/api/rf_bridge/firmware/{token}"
 DOWNLOAD_VIEW_KEY = "firmware_download_view"
+FIRMWARE_UPDATE_VERIFY_SECONDS = 45
 VERSION_CHARACTERS = "0123456789.-_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
@@ -243,6 +244,15 @@ class RFBridgeFirmwareUpdate(UpdateEntity):
                 _LOGGER.debug("Could not fetch RF Bridge firmware manifest: %s", err)
             self.async_write_ha_state()
 
+    async def _async_wait_for_version(self, version: str) -> bool:
+        """Wait for the bridge to reconnect after a signed update."""
+        deadline = asyncio.get_running_loop().time() + FIRMWARE_UPDATE_VERIFY_SECONDS
+        while asyncio.get_running_loop().time() < deadline:
+            if self._hub.status.get(CONF_SW_VERSION) == version:
+                return True
+            await asyncio.sleep(1)
+        return self._hub.status.get(CONF_SW_VERSION) == version
+
     async def async_install(
         self, version: str | None, backup: bool, **kwargs: Any
     ) -> None:
@@ -255,13 +265,38 @@ class RFBridgeFirmwareUpdate(UpdateEntity):
             artifact = await _async_stage_release(self.hass, self._hub.entry, release)
             view = _get_download_view(self.hass)
             token = view.add(artifact)
+            disconnected_after_schedule = False
             try:
                 await self._hub.async_schedule_firmware_update(
                     _local_download_url(self.hass, token)
                 )
+            except aiohttp.ClientError as err:
+                if "WebSocket disconnected" not in str(err):
+                    view.discard(token)
+                    raise
+                # The bridge starts the fetch immediately after accepting the
+                # request, which legitimately closes its WebSocket on reboot.
+                # Keep the one-time URL alive through that transition.
+                disconnected_after_schedule = True
+                _LOGGER.debug(
+                    "RF Bridge disconnected while starting firmware update; "
+                    "waiting for version %s",
+                    release.version,
+                )
             except Exception:
                 view.discard(token)
                 raise
+
+            if not await self._async_wait_for_version(release.version):
+                view.discard(token)
+                reason = (
+                    "after scheduling the update"
+                    if disconnected_after_schedule
+                    else "while waiting for the update"
+                )
+                raise HomeAssistantError(
+                    f"RF Bridge did not report firmware {release.version} {reason}"
+                )
             self._release = release
             self.async_write_ha_state()
 
