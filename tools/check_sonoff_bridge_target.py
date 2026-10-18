@@ -21,6 +21,7 @@ def main() -> None:
     websocket = ROOT / "RFLink" / "12_Portal_ws.cpp"
     wifi = ROOT / "RFLink" / "10_Wifi.cpp"
     core = ROOT / "RFLink" / "RFLink.cpp"
+    update = ROOT / "RFLink" / "13_Update.cpp"
 
     for setting in (
         "[env:sonoff_bridge]",
@@ -79,6 +80,17 @@ def main() -> None:
         raise SystemExit("WebSocket command telemetry must not allocate reset-reason Strings")
     require(core, "const __FlashStringHelper *resetReasonText(uint32_t reason)")
     require(core, "const rst_info *resetInfo = ESP.getResetInfoPtr();")
+
+    core_source = core.read_text(encoding="utf-8")
+    update_source = update.read_text(encoding="utf-8")
+    if core_source.count("ESP.restart();") != 2 or update_source.count("ESP.restart();") != 1:
+        raise SystemExit("Unexpected software restart path requires explicit review")
+    for setting in (
+        "RFLink::markRebootSource(RFLink::RebootSource::LegacyCommand);",
+        "markRebootSource(scheduledRebootSource);",
+    ):
+        require(core, setting)
+    require(update, "RFLink::markRebootSource(RFLink::RebootSource::SignedUpdate);")
 
 
 if __name__ == "__main__":
