@@ -62,8 +62,8 @@ namespace RFLink { namespace Wifi {
         bool mdnsStarted = false;
         bool mdnsStartAfterSetupAccessPointShutdown = false;
         bool setupAccessPointShutdownRequested = false;
-        bool stationGotIpPending = false;
-        bool stationDisconnectedPending = false;
+        volatile bool stationGotIpPending = false;
+        volatile bool stationDisconnectedPending = false;
         unsigned long setupAccessPointClientConnectedAt = 0;
         const unsigned long SETUP_AP_SHUTDOWN_GRACE_MS = 1000;
         const int MAX_WIFI_SCAN_CACHE = 4;

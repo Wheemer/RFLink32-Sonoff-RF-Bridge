@@ -50,8 +50,8 @@ def main() -> None:
         "if ws_envelope_len >= WS_INBOUND_SIZE:",
     ):
         require(integration, setting)
-    require(wifi, "bool stationGotIpPending = false;")
-    require(wifi, "bool stationDisconnectedPending = false;")
+    require(wifi, "volatile bool stationGotIpPending = false;")
+    require(wifi, "volatile bool stationDisconnectedPending = false;")
     require(wifi, "void processStationGotIp()")
     require(wifi, "void processStationDisconnected()")
     if wifi.read_text(encoding="utf-8").count("stationGotIpPending = true;") != 2:
