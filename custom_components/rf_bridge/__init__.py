@@ -505,6 +505,21 @@ class RFBridgeHub:
         """Return cached status pushed by the WebSocket hello message."""
         return self.status
 
+    async def async_refresh_status(self) -> dict[str, Any]:
+        """Request the bridge's current runtime status over the live socket."""
+        result = await self._ws_request({"type": "status"}, timeout=WS_ACTION_TIMEOUT)
+        if result.get("type") != "status":
+            message = result.get("message") or "Bridge returned an invalid status response"
+            raise ServiceValidationError(f"RF Bridge status failed for {self.host}: {message}")
+        status = result.get("status")
+        if not isinstance(status, dict):
+            raise ServiceValidationError(f"RF Bridge returned no status for {self.host}")
+        self.status = status
+        self.last_status_at = dt_util.utcnow().isoformat()
+        self._mark_reachable()
+        self.async_write_diagnostics()
+        return status
+
     async def async_arm_learning(self) -> None:
         learn_seconds = 30
         # Clear the previous capture before asking the bridge to arm. A remote

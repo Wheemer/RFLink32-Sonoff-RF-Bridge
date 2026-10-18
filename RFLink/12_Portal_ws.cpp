@@ -369,6 +369,32 @@ namespace RFLink { namespace Portal {
               return;
             }
 
+            if(strcmp(type, "status") == 0) {
+              wsStatusDoc.clear();
+              JsonObject out = wsStatusDoc.to<JsonObject>();
+              out[F("type")] = F("status");
+              out[F("id")] = requestId;
+              JsonObject status = out.createNestedObject(F("status"));
+              RFLink::getStatusJsonString(status);
+              if(wsStatusDoc.overflowed()) {
+                wsStatusDoc.clear();
+                out = wsStatusDoc.to<JsonObject>();
+                out[F("type")] = F("status");
+                out[F("id")] = requestId;
+                status = out.createNestedObject(F("status"));
+                status[F("status_truncated")] = true;
+                status[F("sw_version")] = F(RFLINK_FIRMWARE_VERSION);
+                status[F("build_name")] = F(RFLINK_BUILDNAME);
+                status[F("hardware")] = F(RFLINK_HARDWARE_NAME);
+                status[F("heap_free")] = ESP.getFreeHeap();
+                status[F("rf_event_cursor")] = RFLink::getRfEventCursor();
+                if(RFLink::UpdateSecurity::lastError()[0] != 0)
+                  status[F("update_error")] = RFLink::UpdateSecurity::lastError();
+              }
+              wsSendJsonToClient(client, wsStatusDoc);
+              return;
+            }
+
             if(strcmp(type, "command") == 0) {
               if(jobInProgress) {
                 wsSendError(client, requestId, F("Bridge busy"));

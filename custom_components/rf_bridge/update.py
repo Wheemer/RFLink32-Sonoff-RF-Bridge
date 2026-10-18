@@ -288,12 +288,24 @@ class RFBridgeFirmwareUpdate(UpdateEntity):
                 raise
 
             if not await self._async_wait_for_version(release.version):
+                update_error = None
+                try:
+                    status = await self._hub.async_refresh_status()
+                    reported_error = status.get("update_error")
+                    if isinstance(reported_error, str) and reported_error:
+                        update_error = reported_error
+                except (aiohttp.ClientError, ServiceValidationError) as err:
+                    _LOGGER.debug(
+                        "Could not obtain RF Bridge update failure detail: %s", err
+                    )
                 view.discard(token)
                 reason = (
                     "after scheduling the update"
                     if disconnected_after_schedule
                     else "while waiting for the update"
                 )
+                if update_error is not None:
+                    reason = f"{reason}: {update_error}"
                 raise HomeAssistantError(
                     f"RF Bridge did not report firmware {release.version} {reason}"
                 )
