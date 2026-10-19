@@ -38,7 +38,9 @@ jobs:
           done
 
       - name: Validate OTA staging layout
-        run: python tools/validate_ota_layout.py .pio/build/sonoff_bridge/firmware.bin
+        run: |
+          python tools/validate_ota_layout.py .pio/build/sonoff_bridge/firmware.bin
+          python tools/check_ota_signing_lifecycle.py
 
       - name: Sign and package release assets
         env:

@@ -51,6 +51,20 @@ namespace {
   constexpr char UPDATE_SIGNING_KEY_ID[] =
     "2cd04321efe940bfcafa11b426412d93db6a8703aba88c4dc141b8e6c4270457";
 
+  struct SigningContext {
+    BearSSL::PublicKey key;
+    BearSSL::HashSHA256 hash;
+    BearSSL::SigningVerifier verifier;
+
+    SigningContext() : key(signing_pubkey), verifier(&key) {}
+  };
+
+  SigningContext &signingContext()
+  {
+    static SigningContext context;
+    return context;
+  }
+
   uint32_t stateChecksum(const OtaState &state)
   {
     uint32_t value = 2166136261UL;
@@ -134,25 +148,31 @@ namespace {
     }
   }
 
-  bool fetchAndApplyUpdate(const char *url, char *error, size_t errorSize, int32_t &errorCode)
+  bool initialiseSigningVerifier(char *error, size_t errorSize)
   {
-    errorCode = -1;
-    // Construct the verifier only when OTA is first used, then retain it.
-    // SigningVerifier reserves the ESP8266's secondary crypto stack, so a
-    // per-attempt object would leak that reservation. Reinstall it directly
-    // before every update, as required by the updater's singleton API.
-    static BearSSL::PublicKey signingKey(signing_pubkey);
-    if(!signingKey.isRSA()) {
+    // Construct these in setup(), before Wi-Fi and websocket allocations can
+    // fragment the ESP8285 heap. SigningVerifier reserves BearSSL's 6.2 KB
+    // secondary crypto stack for the lifetime of the firmware.
+    SigningContext &context = signingContext();
+    if(!context.key.isRSA()) {
       snprintf(error, errorSize, "Embedded OTA signing key is invalid");
       return false;
     }
-    static BearSSL::HashSHA256 signingHash;
-    static BearSSL::SigningVerifier signingVerifier(&signingKey);
-    if(signingVerifier.length() != UPDATE_SIGNATURE_BYTES) {
+    if(context.verifier.length() != UPDATE_SIGNATURE_BYTES) {
       snprintf(error, errorSize, "Embedded OTA signing verifier is invalid");
       return false;
     }
-    Update.installSignature(&signingHash, &signingVerifier);
+    return true;
+  }
+
+  bool fetchAndApplyUpdate(const char *url, char *error, size_t errorSize, int32_t &errorCode)
+  {
+    errorCode = -1;
+    if(!initialiseSigningVerifier(error, errorSize))
+      return false;
+    // Reinstall before each update because Update is a singleton.
+    SigningContext &context = signingContext();
+    Update.installSignature(&context.hash, &context.verifier);
 
     ESP8266HTTPUpdate updater(HTTP_UPDATE_TIMEOUT_MS);
     updater.rebootOnUpdate(false);
@@ -180,6 +200,14 @@ namespace {
 namespace RFLink::UpdateSecurity {
   void setup()
   {
+    // BearSSL allocates a 6.2 KB secondary stack for signature verification.
+    // Reserve it before Wi-Fi and websocket activity fragment the ESP8285 heap.
+    char error[sizeof(updateLastError)] = {};
+    if(!initialiseSigningVerifier(error, sizeof(error))) {
+      snprintf(updateLastError, sizeof(updateLastError), "%s", error);
+      Serial.print(F("OTA signing setup failed: "));
+      Serial.println(updateLastError);
+    }
   }
 
   bool schedule(const char *url, const char *&error)
