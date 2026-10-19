@@ -242,7 +242,7 @@ namespace RFLink { namespace Portal {
           response->print(F(".bar{background:#333;color:#fff;border-radius:5px 5px 0 0;padding:14px 16px;text-align:center}"));
           response->print(F(".card{background:#fff;border:1px solid #0006;border-top:0;border-radius:0 0 5px 5px;padding:16px}"));
           response->print(F("h1{margin:0 0 14px;text-align:center;font-size:1.35rem}label{display:block;margin:0 0 5px}"));
-          response->print(F("select,input{width:100%;font-size:16px;padding:10px;border:1px solid gray;border-radius:5px;background:#fff}"));
+          response->print(F("select,input{width:100%;font-size:16px;padding:10px;border:1px solid gray;border-radius:5px;background:#fff}.password{display:flex;gap:6px}.password input{min-width:0}.password button{width:42px;border:1px solid gray;border-radius:5px;background:#fff;font-size:16px;font-weight:bold}"));
           response->print(F(".field{margin:0 0 14px}.btn{background:yellowgreen;border:1px solid #7fa734;cursor:pointer}"));
           response->print(F(".toast{display:none;margin:0 0 14px;padding:10px;border-radius:5px;color:#fff;background:#04b13d}.toast.err{background:crimson}"));
           response->print(F("@media(max-width:520px){.app{padding:0}.page{max-width:none}.bar,.card{border-radius:0;border-left:0;border-right:0}}"));
@@ -250,8 +250,26 @@ namespace RFLink { namespace Portal {
           response->print(F(RFLINK_HARDWARE_NAME));
           response->print(F("</div><div class='card'><h1>WiFi</h1><div id='toast' class='toast'></div><form id='wifi-form' method='post' action='/wifi'>"));
           response->print(F("<div class='field'><label for='client_ssid'>WiFi name</label><select id='client_ssid' name='client_ssid'>"));
+          String configuredSsid = RFLink::Wifi::getConfiguredClientSsid();
+          bool configuredSsidInCache = false;
           int count = RFLink::Wifi::getCachedWifiNetworkCount();
-          if(count == 0) {
+          for(int i = 0; i < count; i++) {
+            String ssid;
+            int32_t rssi;
+            bool secure;
+            if(RFLink::Wifi::getCachedWifiNetwork(i, ssid, rssi, secure) && ssid == configuredSsid) {
+              configuredSsidInCache = true;
+              break;
+            }
+          }
+          if(configuredSsid.length() > 0 && configuredSsid != "My Home Wifi" && !configuredSsidInCache) {
+            response->print(F("<option selected value=\""));
+            writeEscaped(response, configuredSsid);
+            response->print(F("\">"));
+            writeEscaped(response, configuredSsid);
+            response->print(F(" (saved network)</option>"));
+          }
+          if(count == 0 && configuredSsid.length() == 0) {
             response->print(F("<option value=''>No WiFi networks found</option>"));
           } else {
             for(int i = 0; i < count; i++) {
@@ -260,7 +278,10 @@ namespace RFLink { namespace Portal {
               bool secure;
               if(!RFLink::Wifi::getCachedWifiNetwork(i, ssid, rssi, secure))
                 continue;
-              response->print(F("<option value=\""));
+              response->print(F("<option"));
+              if(ssid == configuredSsid)
+                response->print(F(" selected"));
+              response->print(F(" value=\""));
               writeEscaped(response, ssid);
               response->print(F("\">"));
               writeEscaped(response, ssid);
@@ -270,9 +291,9 @@ namespace RFLink { namespace Portal {
             }
           }
           response->print(F("</select></div><div class='field'><label for='client_password'>WiFi password</label>"));
-          response->print(F("<input id='client_password' name='client_password' type='password' autocomplete='new-password' value=''></div>"));
+          response->print(F("<div class='password'><input id='client_password' name='client_password' type='password' autocomplete='new-password' value=''><button id='toggle-password' type='button' aria-label='Show password'>i</button></div></div>"));
           response->print(F("<input type='submit' class='btn' value='Save'></form>"));
-          response->print(F("<script>(function(){var f=document.getElementById('wifi-form'),t=document.getElementById('toast');function show(m,e){t.textContent=m;t.className=e?'toast err':'toast';t.style.display='block'}f.addEventListener('submit',function(ev){ev.preventDefault();var b=f.querySelector('[type=submit]');if(b)b.disabled=true;var d=new FormData(f);d.append('async','1');fetch('/wifi',{method:'POST',body:d,credentials:'same-origin'}).then(function(r){return r.text().then(function(x){return{ok:r.ok,text:x}})}).then(function(r){show(r.text||(r.ok?'Saved. Connecting to WiFi...':'Save failed'),!r.ok)}).catch(function(){show('Network error while saving',true)}).finally(function(){if(b)b.disabled=false})})})();</script>"));
+          response->print(F("<script>(function(){var f=document.getElementById('wifi-form'),t=document.getElementById('toast'),p=document.getElementById('client_password'),v=document.getElementById('toggle-password');function show(m,e){t.textContent=m;t.className=e?'toast err':'toast';t.style.display='block'}v.addEventListener('click',function(){var showPassword=p.type==='password';p.type=showPassword?'text':'password';v.textContent=showPassword?'x':'i';v.setAttribute('aria-label',showPassword?'Hide password':'Show password')});f.addEventListener('submit',function(ev){ev.preventDefault();var b=f.querySelector('[type=submit]');if(b)b.disabled=true;var d=new FormData(f);d.append('async','1');fetch('/wifi',{method:'POST',body:d,credentials:'same-origin'}).then(function(r){return r.text().then(function(x){return{ok:r.ok,text:x}})}).then(function(r){show(r.text||(r.ok?'Saved. Connecting to WiFi...':'Save failed'),!r.ok)}).catch(function(){show('Network error while saving',true)}).finally(function(){if(b)b.disabled=false})})})();</script>"));
           response->print(F("</div></div></div></body></html>"));
           request->send(response);
         }

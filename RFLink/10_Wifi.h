@@ -30,6 +30,7 @@ namespace RFLink {
         void refreshWifiScanCache();
         int getCachedWifiNetworkCount();
         bool getCachedWifiNetwork(int index, String &ssid, int32_t &rssi, bool &secure);
+        String getConfiguredClientSsid();
 
         void clientParamsUpdatedCallback();
         void accessPointParamsUpdatedCallback();

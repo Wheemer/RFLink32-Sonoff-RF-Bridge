@@ -370,6 +370,10 @@ namespace RFLink { namespace Wifi {
           return true;
         }
 
+        String getConfiguredClientSsid() {
+          return params::client_ssid;
+        }
+
         void stopAccessPoint() {
 #ifdef ESP8266
           stopCaptiveDns();
