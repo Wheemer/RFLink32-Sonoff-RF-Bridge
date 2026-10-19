@@ -1,202 +1,134 @@
-# RFLink32 - Sonoff RF Bridge
+<div align="center">
 
-This repository is a Sonoff RF Bridge focused build of
-[RFLink32](https://github.com/cpainchaud/RFLink32).
+<img src="doc/sonoff_22_front.png" alt="Modified Sonoff RF Bridge" width="220">
 
-It is not a general RFLink32 board-support fork. It is meant for the ESP8285
-Sonoff RF Bridge, especially modified bridges using RFLink raw send/receive
-through a local WebSocket API.
+# RF Bridge
 
-## What This Build Changes
+### Local 433 MHz control for a modified Sonoff RF Bridge and Home Assistant
 
-- Adds a larger RFLink command buffer for long raw RF payloads.
-- Defaults the `sonoff_bridge` environment for the ESP8285 Sonoff RF Bridge.
-- Uses hardcoded RF Bridge radio pins to save space.
-- Defaults async signal mode on.
-- Provides a minimal embedded setup UI for Wi-Fi name/password only, with the
-  four strongest scanned networks rendered directly in the page and DHCP
-  forced on save. The fixed page shell is served from program flash so it does
-  not depend on a large heap allocation.
-- Adds captive-portal handling for first setup from the device AP.
-- Fixes Wi-Fi form handling so disabled checkboxes, including AP enable, persist.
-- Removes MQTT and Serial2Net entirely; the supported Home Assistant path is
-  the local WebSocket API and the bundled `rf_bridge` integration.
-- Adds a local WebSocket API at `/api/ws` for command transmit, learning,
-  reboot, status, signed updates, and RF event push.
-- Keeps captive Wi-Fi setup on port `80` and serves the local API separately on
-  port `8080`.
-- Advertises `_rfbridge._tcp.local.` for the bundled `RF Bridge` Home Assistant
-  integration.
-- Automatically shuts down the setup AP after client Wi-Fi successfully receives
-  an IP address.
-- Reports the hardware profile as `RFLink32 - Sonoff RF Bridge`.
+[![HACS Custom](https://img.shields.io/badge/HACS-CUSTOM-FD7E14?style=for-the-badge&logo=home-assistant&logoColor=white&labelColor=555555)](https://github.com/hacs/integration)
+[![Home Assistant](https://img.shields.io/badge/HOME%20ASSISTANT-CUSTOM%20INTEGRATION-41BDF5?style=for-the-badge&logo=home-assistant&logoColor=white&labelColor=555555)](https://www.home-assistant.io/)
+[![Latest release](https://img.shields.io/github/v/release/Wheemer/RFLink32-Sonoff-RF-Bridge?style=for-the-badge&logo=github&logoColor=white&label=RELEASE&labelColor=555555&color=22C55E)](https://github.com/Wheemer/RFLink32-Sonoff-RF-Bridge/releases/latest)
+[![Build](https://img.shields.io/github/actions/workflow/status/Wheemer/RFLink32-Sonoff-RF-Bridge/ci.yml?style=for-the-badge&logo=githubactions&logoColor=white&label=BUILD&labelColor=555555)](https://github.com/Wheemer/RFLink32-Sonoff-RF-Bridge/actions/workflows/ci.yml)
+[![CodeQL](https://img.shields.io/github/actions/workflow/status/Wheemer/RFLink32-Sonoff-RF-Bridge/codeql.yml?style=for-the-badge&logo=github&logoColor=white&label=CODEQL&labelColor=555555)](https://github.com/Wheemer/RFLink32-Sonoff-RF-Bridge/security/code-scanning)
+[![License](https://img.shields.io/badge/LICENSE-RFLINK%20GATEWAY-64748B?style=for-the-badge&labelColor=555555)](License.txt)
 
-## What This Build Does Not Include
+[Install](#install) • [Flash](#2-flash-the-bridge) • [Configure](#configure-home-assistant) • [Use](#use-the-bridge) • [Troubleshooting](#troubleshooting) • [Releases](https://github.com/Wheemer/RFLink32-Sonoff-RF-Bridge/releases)
 
-- Web firmware upload.
-- MQTT support or configuration.
-- Serial2Net transport.
-- Generic ESP32/LoRa/CC1101 board setup guidance.
-- OLED display support.
-- Generic receiver/transmitter pinout setup pages for arbitrary boards.
+</div>
 
-The initial installation is a local flash. Subsequent signed updates are
-delivered by the bundled Home Assistant integration; firmware accepts no web
-upload.
+RF Bridge is a focused [RFLink32](https://github.com/cpainchaud/RFLink32) fork for the **modified ESP8285 Sonoff RF Bridge**. It replaces the old serial and MQTT paths with a local WebSocket API and a bundled Home Assistant integration.
 
-## Firmware
+It is built for a single job: reliable local 433 MHz receive, learn, and transmit from Home Assistant without a broker, serial bridge, cloud account, or a permanent device web UI.
 
-Every version tag publishes a signed OTA artifact, its manifest, and a normal
-local recovery image on the GitHub releases page:
+> [!WARNING]
+> **Modified Sonoff RF Bridge hardware required.** This firmware targets the ESP8285 Sonoff RF Bridge after the required RF modification. Do not flash it to an unmodified bridge or another RFLink32 board.
 
-[Releases](https://github.com/Wheemer/RFLink32-Sonoff-RF-Bridge/releases)
+## What It Does
 
-Use the release asset for the modified Sonoff RF Bridge target. Do not flash
-artifacts built for another RFLink32 board.
+- **Local WebSocket control:** Home Assistant talks directly to the bridge over the LAN on port `8080`.
+- **Automatic discovery:** The bridge advertises itself after Wi-Fi setup and appears as **RF Bridge** in Home Assistant.
+- **433 MHz receive:** Decoded RFLink messages arrive through one Home Assistant event entity.
+- **Learn mode:** Capture the next physical RF press and retain a replayable command when the waveform fits the bridge command buffer.
+- **Transmit commands:** Add named command buttons in the integration options and call the same commands from automations or scripts.
+- **Signed firmware updates:** After the initial local flash, Home Assistant checks GitHub releases and installs signed OTA updates.
+- **Useful diagnostics:** Connectivity, status, uptime, and installed firmware are visible in Home Assistant.
+- **Small setup surface:** The temporary access point exposes only Wi-Fi selection and password entry. It closes after the bridge joins the LAN.
 
-## Build
+## Install
 
-Build the Sonoff RF Bridge firmware with PlatformIO:
+[![Open your Home Assistant instance and add this repository to HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Wheemer&repository=RFLink32-Sonoff-RF-Bridge&category=integration)
+
+### 1. Install the Home Assistant integration
+
+1. Open **HACS** in Home Assistant.
+2. Open the three-dot menu, then choose **Custom repositories**.
+3. Add `https://github.com/Wheemer/RFLink32-Sonoff-RF-Bridge` as an **Integration** repository.
+4. Install **RF Bridge**.
+5. Restart Home Assistant once so it loads the new integration code.
+
+### 2. Flash the bridge
+
+Download the `RFBridge-<version>-local-recovery.bin` asset from the [latest release](https://github.com/Wheemer/RFLink32-Sonoff-RF-Bridge/releases/latest). Flash it with a suitable ESP8266/ESP8285 serial flashing tool.
+
+The first flash is local. OTA updates begin only after the bridge has joined Wi-Fi and Home Assistant has added it.
+
+### 3. Join Wi-Fi
+
+1. Connect a phone or computer to the bridge access point.
+2. Open the setup page if it does not appear automatically.
+3. Choose the Wi-Fi network from the list of nearby networks.
+4. Enter the Wi-Fi password and save.
+5. The bridge joins the network by DHCP and turns off its setup access point.
+
+## Configure Home Assistant
+
+After the bridge joins Wi-Fi, Home Assistant should discover **RF Bridge** automatically.
+
+1. Open **Settings > Devices & services**.
+2. Select the discovered **RF Bridge** card and choose **Add**.
+3. Give the device a name and assign its area.
+4. Open **Configure** on the integration to define named transmit commands and known received commands.
+
+The integration uses the bridge's local WebSocket API. There is no MQTT broker, RFLink serial integration, or device username/password to configure.
+
+## Use The Bridge
+
+### Receive and learn
+
+- The **RF event** entity reports configured decoded commands.
+- Press **Learn next RF event**, then press one physical remote button once.
+- The bridge exits learn mode after the first received command.
+- Use the captured data to add a meaningful received-command name in the integration configuration.
+
+### Send
+
+Named transmit commands are exposed as Home Assistant buttons. They can be pressed from the device page, dashboard, scripts, or automations.
+
+The integration also exposes services for sending RFLink command lines when a configurable button is not the right fit.
+
+### Update firmware
+
+The **RF Bridge Firmware** update entity checks the signed GitHub release manifest. When a newer stable release is published, install it from Home Assistant. The integration downloads the signed image, verifies its SHA-256, and hands the bridge a one-time local download URL. The bridge verifies the embedded signing key before it reboots.
+
+## How It Works
+
+| Component | Responsibility |
+| --- | --- |
+| Modified Sonoff RF Bridge | RF receive/transmit, Wi-Fi onboarding, local API, signed OTA validation |
+| RF Bridge integration | Discovery, Home Assistant entities, named command configuration, learning, OTA staging |
+| GitHub release workflow | ESP8285 build, OTA layout validation, artifact signing, release and manifest publication |
+
+The firmware preserves RFLink command compatibility. Commands use the local WebSocket API rather than MQTT or serial transport.
+
+## Troubleshooting
+
+### The bridge is not discovered
+
+- Confirm the bridge completed Wi-Fi setup and received a DHCP address.
+- Confirm Home Assistant and the bridge are on a network where multicast discovery is allowed.
+- Add the integration manually only after confirming the bridge's API is reachable on port `8080`.
+
+### A learned command is not replayable
+
+Some signals may not decode into a supported RFLink protocol. During learning, the bridge can provide a raw replay command when the captured pulse sequence fits the supported command buffer.
+
+### A command does not transmit
+
+- Confirm the named command button is enabled and points at the expected RFLink command.
+- Check the RF Bridge device's **Connected** and **Status** diagnostics.
+- Keep the modified bridge within practical RF range of the receiver being controlled.
+
+## Build From Source
+
+The supported firmware target is `sonoff_bridge`:
 
 ```bash
 platformio run -e sonoff_bridge
 ```
 
-The relevant environment is:
+The repository validation workflow builds this exact target and checks the OTA image layout before publishing a release.
 
-```ini
-[env:sonoff_bridge]
-board = esp8285
-```
+## Credits
 
-The build flags for this target include:
-
-```ini
--D TARGET_BOARD_ESP8285
--D RFLINK_WIFI_ENABLED
--D RFLINK_NO_RADIOLIB_SUPPORT
--D RFLINK_SERIAL_RX_BUFFER_SIZE=512
--D RFLINK_BUILDNAME='"RFBridgeLocal"'
--D RFLINK_FIRMWARE_VERSION='"<release version>"'
--D RFLINK_HARDWARE_NAME='"RFLink32 - Sonoff RF Bridge"'
--D RFLINK_USE_HARDCODED_RADIO_PINS_ONLY
-```
-
-## Flash
-
-For a first install or recovery, flash the `RFBridge-<version>-local-recovery.bin`
-release asset with an ESP8266/ESP8285 flashing tool. It is the normal firmware
-image for the modified Sonoff RF Bridge target.
-
-After flashing, connect to the device AP and configure Wi-Fi from the embedded
-setup UI. The setup page exposes only a Wi-Fi network dropdown, Wi-Fi password,
-and save; DHCP is automatic. Once the bridge joins the LAN, the bundled Home
-Assistant integration can discover it through the firmware's
-`_rfbridge._tcp.local.` mDNS service and talk to the bridge directly over the
-local WebSocket API on the advertised API port.
-
-The setup UI and local WebSocket API do not require device web credentials.
-
-## Signed Updates
-
-The bridge accepts firmware only through its local WebSocket API and verifies a
-RSA-2048 signature before rebooting. Home Assistant downloads the release asset
-over HTTPS, verifies its SHA-256 from `manifest.json`, exposes that exact signed
-artifact through a one-time local HTTP URL, and then tells the bridge to fetch
-it. The bridge verifies the signature independently. There is no device web
-upload endpoint and no device username/password.
-
-Create release assets with `tools/package_sonoff_bridge_update.py`. Supply
-`--version` and the final HTTPS `--artifact-url` to generate the matching
-`manifest.json`; publish both alongside the signed artifact. The update entity
-will stay unknown until a valid published release manifest exists.
-
-The release workflow builds the exact target image, checks OTA staging margin,
-checks that the signing key matches the public key embedded in firmware, signs
-and verifies the artifact, then publishes the release. A successful tagged
-release is required before Home Assistant can offer an update.
-
-## Home Assistant
-
-This repo also includes the custom Home Assistant integration:
-
-```text
-custom_components/rf_bridge
-```
-
-The integration is named `RF Bridge`. It is discovered by Zeroconf after Wi-Fi
-setup and communicates directly with the bridge's local WebSocket API. It
-creates configurable command buttons and services that send RFLink command
-lines through `/api/ws`, built-in buttons for learning the next received RF
-event and rebooting the bridge, and an event entity for decoded 433 MHz RFLink
-messages pushed by the bridge. Its diagnostics are the bridge connectivity
-binary sensor, bridge status, uptime, and the firmware update entity. Configure
-command buttons from the integration options.
-
-Command definitions may use either one RFLink command string or a list of
-command strings. Multi-command definitions wait `sequence_delay` seconds between
-entries, defaulting to `0.6` seconds so devices that beep or wake before the
-next command are not driven too quickly.
-
-## Command Transport
-
-This build keeps the RFLink32 command protocol and sends commands directly over
-the local WebSocket API on API port `8080`:
-
-```json
-{"type":"command","id":1,"command":"10;signal;sendRF;..."}
-```
-
-That matters for commands shaped like:
-
-```text
-10;signal;sendRF;{...}
-```
-
-Short test commands are not enough to validate this path. A short command can
-fit while a long raw RF payload is still truncated on a stock-sized buffer.
-
-## Web UI
-
-The web UI in this fork is intentionally lightweight. It keeps only Wi-Fi setup
-and removes normal user-facing pages that do not apply after Home Assistant
-discovery, such as static IP settings, firmware upload, signal
-tuning, advanced JSON editing, and unsupported radio/plugin configuration. The
-WebSocket API remains available on port `8080` for integration and
-recovery tooling.
-
-## Received RF Events
-
-Decoded RFLink messages and undecoded raw captures are pushed over `/api/ws`
-and also kept in a small in-memory queue. The Home Assistant integration
-exposes configured received commands through an `event` entity named `RF
-event`. Normal decoded RFLink frames only trigger the event entity when they
-match an entry in the integration's known received command JSON. Exact keys of
-the form `protocol_id_switch_cmd` are preferred, with `protocol_id_switch` as a
-fallback. The `Learn next RF event` button arms a short raw-learning window so
-the next physical 433 MHz press is easy to identify.
-
-When `Learn next RF event` is pressed, the integration arms a short raw-learning
-window on the bridge through its existing persistent WebSocket connection. If
-RFLink cannot decode the next received signal, the firmware emits one raw event
-over that same connection and then disarms raw learning. When the raw pulse
-list fits the command buffer, the event includes a replayable
-`10;signal;sendRF;...` command in the `command` field. Learned replay commands
-store real microsecond pulses and do not include a `multiply` field, matching
-the firmware parser and Home Assistant validator.
-
-## Upstream
-
-This repository is a GitHub fork of RFLink32. This focused branch changes only
-the modified Sonoff RF Bridge target and its bundled Home Assistant integration.
-
-The upstream project is RFLink32 by cpainchaud:
-
-https://github.com/cpainchaud/RFLink32
-
-RFLink32 itself is forked from RFLink-ESP, which is forked from the original
-RFLink project.
-
-## License
-
-See [License.txt](License.txt).
+This repository is a focused fork of [RFLink32](https://github.com/cpainchaud/RFLink32) by cpainchaud, itself derived from RFLink-ESP and the original RFLink project. The RFLink Gateway license remains in [License.txt](License.txt).
