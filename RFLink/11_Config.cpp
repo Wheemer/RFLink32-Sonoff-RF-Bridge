@@ -121,7 +121,7 @@ namespace RFLink
         if(rtsFile) {
           rtsConfigBytes = rtsFile.size();
           if(rtsConfigBytes > sizeof(rtsConfig) ||
-             rtsFile.read(rtsConfig, rtsConfigBytes) != rtsConfigBytes) {
+             static_cast<size_t>(rtsFile.read(rtsConfig, rtsConfigBytes)) != rtsConfigBytes) {
             rtsFile.close();
             legacyFs.end();
             doc.clear();
@@ -316,8 +316,10 @@ namespace RFLink
 
       // We're hunting extra configurations which dont exist in json
       auto root = doc.as<JsonObject>();
-      for (JsonPair kv : root)
+      for (JsonObject::iterator rootIt = root.begin(); rootIt != root.end(); )
       {
+        JsonPair kv = *rootIt;
+        ++rootIt;
         //Serial.print("Remote has root object named: ");
         //Serial.println(kv.key().c_str());
 
@@ -339,8 +341,11 @@ namespace RFLink
         }
 
         // from here we have a valid section, now we go down a level in the remote object
-        for (JsonPair section_kv : sectionObject)
+        for (JsonObject::iterator sectionIt = sectionObject.begin();
+             sectionIt != sectionObject.end(); )
         {
+          JsonPair section_kv = *sectionIt;
+          ++sectionIt;
           //Serial.print("Remote section has item named: ");
           //Serial.println(section_kv.key().c_str());
 
@@ -709,6 +714,8 @@ namespace RFLink
       this->section = section;
       this->type = ConfigItemType::STRING_t;
       this->update_callback = update_callback;
+      this->canBeNull = can_be_null;
+      this->boolDefaultValue = false;
 
       static_assert(sizeof(this->defaultValue) <= sizeof(char *), "variable size is too small");
       this->defaultValue = (void *)default_value;
@@ -725,6 +732,7 @@ namespace RFLink
       this->type = ConfigItemType::LONG_INT_t;
       this->update_callback = update_callback;
       this->canBeNull = can_be_null;
+      this->boolDefaultValue = false;
 
       static_assert(sizeof(this->defaultValue) <= sizeof(long int), "variable size is too small");
       this->defaultValue = (void *)default_value;
@@ -741,6 +749,7 @@ namespace RFLink
       this->type = ConfigItemType::BOOLEAN_t;
       this->update_callback = update_callback;
       this->canBeNull = can_be_null;
+      this->defaultValue = nullptr;
 
       this->boolDefaultValue = default_value;
     }
@@ -752,6 +761,8 @@ namespace RFLink
       this->type = ConfigItemType::EOF_t;
       this->update_callback = nullptr;
       this->canBeNull = false;
+      this->boolDefaultValue = false;
+      this->defaultValue = nullptr;
     }
 
     void dumpConfigToString(String &destination)

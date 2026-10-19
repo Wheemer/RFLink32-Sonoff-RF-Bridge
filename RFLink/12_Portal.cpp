@@ -367,6 +367,15 @@ namespace RFLink { namespace Portal {
         }
 
         void maintainApiServer() {
+          // A software restart can restore the station connection without
+          // delivering a new Got-IP callback after Portal::start() has run.
+          // In that state the bridge is on Wi-Fi but its API listener has
+          // never been started. Treat the live station state as authoritative.
+          if(!apiServerStarted && WiFi.isConnected() && !apiServerRestartPending) {
+            apiServerRestartPending = true;
+            apiServerRetryAt = 0;
+          }
+
           // A TCP listener can disappear after an SDK-level network restart while
           // the station remains associated. Do not wait for another Got-IP event
           // that may never arrive before recreating the API listener.

@@ -414,7 +414,13 @@ namespace RFLink {
 
       // Copy input command to InputBuffer_Serial, because many plugins are based on it !
       if(cmd != InputBuffer_Serial) { // sometimes we already have the command in the right buffer
-        memcpy(InputBuffer_Serial, cmd, INPUT_COMMAND_SIZE);;
+        // Command sources include short WebSocket and internal buffers. Copying
+        // INPUT_COMMAND_SIZE bytes unconditionally read beyond those buffers.
+        // Preserve the complete raw-command capacity while always terminating
+        // the plugin-facing command buffer.
+        const size_t commandLength = strnlen(cmd, INPUT_COMMAND_SIZE - 1);
+        memcpy(InputBuffer_Serial, cmd, commandLength);
+        InputBuffer_Serial[commandLength] = 0;
       }
 
       if (strlen(cmd) > 7) { // need to see minimal 8 characters on the serial port

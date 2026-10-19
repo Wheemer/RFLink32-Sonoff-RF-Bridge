@@ -130,10 +130,22 @@ namespace RFLink
       }
 
       item = Config::findConfigItem(json_name_sample_rate, Config::SectionId::Signal_id);
-      if (item->getLongIntValue() != params::sample_rate)
+      const long configuredSampleRate = item->getLongIntValue();
+      // RawSignal::Multiply is a byte and is used as a divisor in both RX
+      // completion paths. Reject values that would truncate to zero or exceed
+      // the representation used by the pulse buffer.
+      const unsigned short sampleRate =
+        configuredSampleRate >= 1 && configuredSampleRate <= 255
+          ? static_cast<unsigned short>(configuredSampleRate)
+          : DEFAULT_RAWSIGNAL_SAMPLE_RATE;
+      if (configuredSampleRate != sampleRate)
+      {
+        Serial.println(F("Invalid sample_rate; using the safe default."));
+      }
+      if (sampleRate != params::sample_rate)
       {
         changesDetected = true;
-        params::sample_rate = item->getLongIntValue();
+        params::sample_rate = sampleRate;
       }
 
       item = Config::findConfigItem(json_name_min_raw_pulses, Config::SectionId::Signal_id);
@@ -677,6 +689,10 @@ namespace RFLink
           return false;
       }
 
+      // The GPIO ISR only marks a complete frame. Detach it here, in normal
+      // cooperative code, before a decoder reads the shared pulse buffer.
+      AsyncSignalScanner::stopScanning();
+
       counters::receivedSignalsCount++; // we have a signal, let's increment counters
 
       byte signalWasDecoded = PluginRXCall(0, 0); // Check all plugins to see which plugin can handle the received signal.
@@ -773,14 +789,24 @@ namespace RFLink
 
           RawSignal.Time = millis(); // record when this signal started
           RawSignal.Multiply = Signal::params::sample_rate;
-          nextPulseTimeoutTime_us = changeTime_us + SIGNAL_END_TIMEOUT_US;
+          nextPulseTimeoutTime_us = changeTime_us + params::signal_end_timeout;
 
           return;
         }
 
-        if (pulseLength_us > SIGNAL_END_TIMEOUT_US)
-        { // signal timedout but was not caught by main loop! We will do its job
-          onPulseTimerTimeout();
+        if (pulseLength_us > params::signal_end_timeout)
+        { // The cooperative loop missed the timeout. Do not detach an ISR from
+          // interrupt context; mark the completed frame for the main loop.
+          nextPulseTimeoutTime_us = 0;
+          if (static_cast<unsigned int>(RawSignal.Number) < params::min_raw_pulses) {
+            RawSignal.Number = 0;
+            RawSignal.Time = 0;
+            return;
+          }
+          RawSignal.Number++;
+          RawSignal.Pulses[RawSignal.Number] =
+            params::signal_end_timeout / Signal::params::sample_rate;
+          RawSignal.readyForDecoder = true;
           return;
         }
 
@@ -807,7 +833,7 @@ namespace RFLink
 
         //Serial.print("found pulse #");Serial.println(RawSignal.Number);
         RawSignal.Pulses[RawSignal.Number] = pulseLength_us / Signal::params::sample_rate;
-        nextPulseTimeoutTime_us = changeTime_us + SIGNAL_END_TIMEOUT_US;
+        nextPulseTimeoutTime_us = changeTime_us + params::signal_end_timeout;
       }
 
       void onPulseTimerTimeout()
@@ -836,7 +862,7 @@ namespace RFLink
           return;
         }
 
-        if (RawSignal.Number < MIN_RAW_PULSES)
+        if (static_cast<unsigned int>(RawSignal.Number) < params::min_raw_pulses)
         { // not enough pulses, we ignore it
           nextPulseTimeoutTime_us = 0;
           RawSignal.Number = 0;
@@ -848,7 +874,7 @@ namespace RFLink
         stopScanning();
         nextPulseTimeoutTime_us = 0;
         RawSignal.Number++;
-        RawSignal.Pulses[RawSignal.Number] = SIGNAL_END_TIMEOUT_US / Signal::params::sample_rate;
+        RawSignal.Pulses[RawSignal.Number] = params::signal_end_timeout / Signal::params::sample_rate;
         //Serial.print("found one packet, marking now for decoding. Pulses = ");Serial.println(RawSignal.Number);
         RawSignal.readyForDecoder = true;
       }
