@@ -1,4 +1,4 @@
-"""Reject RF Bridge images that cannot safely bootstrap or stage OTA updates."""
+"""Reject RF Bridge images that cannot safely stage OTA updates."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def main() -> None:
     if firmware_size >= LEGACY_FS_START:
         raise SystemExit(
             "Firmware overlaps the legacy 256 KB filesystem; it cannot safely "
-            "copy the existing configuration during a serial bootstrap."
+            "copy the existing configuration during the local serial installation."
         )
 
     compressed_size = len(gzip.compress(firmware, compresslevel=9))

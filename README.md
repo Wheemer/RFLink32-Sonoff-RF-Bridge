@@ -39,7 +39,7 @@ through a local WebSocket API.
 - OLED display support.
 - Generic receiver/transmitter pinout setup pages for arbitrary boards.
 
-The initial bootstrap is by serial. Subsequent signed updates are delivered by
+The initial installation is a local serial flash. Subsequent signed updates are delivered by
 the bundled Home Assistant integration; firmware accepts no web upload.
 
 ## Firmware
@@ -74,14 +74,14 @@ The build flags for this target include:
 -D RFLINK_NO_RADIOLIB_SUPPORT
 -D RFLINK_SERIAL_RX_BUFFER_SIZE=1600
 -D RFLINK_BUILDNAME='"RFBridgeLocal"'
--D RFLINK_FIRMWARE_VERSION='"0.7.0"'
+-D RFLINK_FIRMWARE_VERSION='"0.7.33"'
 -D RFLINK_HARDWARE_NAME='"RFLink32 - Sonoff RF Bridge"'
 -D RFLINK_USE_HARDCODED_RADIO_PINS_ONLY
 ```
 
 ## Flash
 
-Flash the initial bootstrap image by serial using your preferred ESP8266/ESP8285
+Flash the normal release image locally using your preferred ESP8266/ESP8285
 flashing tool. The release asset is a normal ESP8266 firmware image for the
 modified Sonoff RF Bridge target.
 
@@ -156,7 +156,7 @@ The web UI in this fork is intentionally lightweight. It keeps only Wi-Fi setup
 and removes normal user-facing pages that do not apply after Home Assistant
 discovery, such as static IP settings, firmware upload, signal
 tuning, advanced JSON editing, and unsupported radio/plugin configuration. The
-WebSocket API remains available on port `8080` for integration/bootstrap and
+WebSocket API remains available on port `8080` for integration and
 recovery tooling.
 
 ## Received RF Events

@@ -283,7 +283,7 @@ class RFBridgeHub:
         self._pending.clear()
 
     async def async_start(self) -> None:
-        """Start the reconnect loop without blocking Home Assistant bootstrap."""
+        """Start the reconnect loop without blocking Home Assistant startup."""
         if self._ws_task is None:
             self._ws_task = self.hass.async_create_background_task(
                 self._ws_loop(),
@@ -620,7 +620,7 @@ class RFBridgeHub:
         self.last_success = True
         self.async_write_diagnostics()
 
-        # Close the persistent Home Assistant socket before the bootstrap
+        # Close the persistent Home Assistant socket before the OTA
         # updater starts so it does not compete with signed flash writes.
         if self._ws is not None and not self._ws.closed:
             await self._ws.close()

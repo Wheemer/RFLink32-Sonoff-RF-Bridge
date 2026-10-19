@@ -41,7 +41,6 @@ DOWNLOAD_ROUTE = "/api/rf_bridge/firmware/{token}"
 DOWNLOAD_VIEW_KEY = "firmware_download_view"
 DOWNLOAD_VIEW_DATA_KEY = f"{DOMAIN}_{DOWNLOAD_VIEW_KEY}"
 FIRMWARE_UPDATE_VERIFY_SECONDS = 45
-BOOTSTRAP_UPDATE_VERIFY_SECONDS = 120
 VERSION_CHARACTERS = "0123456789.-_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
@@ -55,15 +54,6 @@ class FirmwareRelease:
     signing_key_id: str
     release_url: str | None
     release_notes: str | None
-    bootstrap: BootstrapArtifact | None
-
-
-@dataclass(frozen=True, slots=True)
-class BootstrapArtifact:
-    """A raw signed bridge image used only to migrate the legacy OTA core."""
-
-    url: str
-    sha256: str
 
 
 def _parse_release(data: Any) -> FirmwareRelease:
@@ -103,23 +93,6 @@ def _parse_release(data: Any) -> FirmwareRelease:
     release_notes = data.get("release_notes")
     if not isinstance(release_notes, str):
         release_notes = None
-    bootstrap = None
-    bootstrap_data = data.get("bootstrap")
-    if bootstrap_data is not None:
-        bootstrap_url = bootstrap_data.get("url") if isinstance(bootstrap_data, dict) else None
-        bootstrap_sha256 = bootstrap_data.get("sha256") if isinstance(bootstrap_data, dict) else None
-        bootstrap_parsed = urlparse(bootstrap_url) if isinstance(bootstrap_url, str) else None
-        if (
-            not isinstance(bootstrap_url, str)
-            or bootstrap_parsed.scheme != "https"
-            or not bootstrap_parsed.netloc
-            or not isinstance(bootstrap_sha256, str)
-            or len(bootstrap_sha256) != 64
-            or any(character not in "0123456789abcdef" for character in bootstrap_sha256.lower())
-        ):
-            raise ValueError("manifest bootstrap artifact is invalid")
-        bootstrap = BootstrapArtifact(bootstrap_url, bootstrap_sha256.lower())
-
     return FirmwareRelease(
         version=version.strip(),
         url=url,
@@ -127,7 +100,6 @@ def _parse_release(data: Any) -> FirmwareRelease:
         signing_key_id=signing_key_id.lower(),
         release_url=release_url,
         release_notes=release_notes,
-        bootstrap=bootstrap,
     )
 
 
@@ -219,18 +191,13 @@ async def _async_fetch_release(hass: HomeAssistant) -> FirmwareRelease:
         return _parse_release(await response.json(content_type=None))
 
 
-async def _async_stage_artifact(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    *,
-    url: str,
-    sha256: str,
-    filename: str,
+async def _async_stage_release(
+    hass: HomeAssistant, entry: ConfigEntry, release: FirmwareRelease
 ) -> Path:
     """Download and hash-check the exact signed artifact before exposing it."""
     session = async_get_clientsession(hass)
     timeout = aiohttp.ClientTimeout(total=90)
-    async with session.get(url, timeout=timeout) as response:
+    async with session.get(release.url, timeout=timeout) as response:
         response.raise_for_status()
         content_length = response.content_length
         if content_length is None or content_length <= 0 or content_length > MAX_FIRMWARE_BYTES:
@@ -239,25 +206,14 @@ async def _async_stage_artifact(
 
     if len(artifact) != content_length or len(artifact) > MAX_FIRMWARE_BYTES:
         raise HomeAssistantError("Firmware download was incomplete")
-    if hashlib.sha256(artifact).hexdigest() != sha256:
+    if hashlib.sha256(artifact).hexdigest() != release.sha256:
         raise HomeAssistantError("Firmware download checksum did not match the release")
 
     directory = Path(hass.config.path(".storage", "rf_bridge_firmware"))
-    path = directory / filename
+    path = directory / f"{entry.entry_id}-{release.version}.bin.gz.signed"
     await hass.async_add_executor_job(directory.mkdir, 0o700, True, True)
     await hass.async_add_executor_job(path.write_bytes, artifact)
     return path
-
-
-def _requires_bootstrap(installed_version: str | None, target_version: str) -> bool:
-    """Return whether the installed 2.7.4-era updater needs migration first."""
-    if not installed_version or installed_version == target_version:
-        return False
-    try:
-        parts = tuple(int(part) for part in installed_version.split("."))
-    except ValueError:
-        return True
-    return parts < (0, 7, 30)
 
 
 def _local_download_url(hass: HomeAssistant, token: str) -> str:
@@ -357,36 +313,6 @@ class RFBridgeFirmwareUpdate(UpdateEntity):
             await asyncio.sleep(1)
         return self._hub.status.get(CONF_SW_VERSION) == version
 
-    async def _async_wait_for_bootstrap(self) -> bool:
-        """Wait until the short-lived Core 3 bootstrap has joined Wi-Fi."""
-        deadline = asyncio.get_running_loop().time() + BOOTSTRAP_UPDATE_VERIFY_SECONDS
-        session = async_get_clientsession(self.hass)
-        url = f"http://{self._hub.host}:{self._hub.api_port}/api/bootstrap/status"
-        while asyncio.get_running_loop().time() < deadline:
-            try:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
-                    if response.status == 200:
-                        status = await response.json(content_type=None)
-                        if status.get("mode") == "signed_ota_bootstrap":
-                            return True
-            except aiohttp.ClientError:
-                pass
-            await asyncio.sleep(1)
-        return False
-
-    async def _async_schedule_bootstrap_final(self, url: str) -> None:
-        """Ask the Core 3 bootstrap to fetch the final signed gzip image."""
-        session = async_get_clientsession(self.hass)
-        endpoint = f"http://{self._hub.host}:{self._hub.api_port}/api/bootstrap/update"
-        async with session.post(
-            endpoint, params={"url": url}, timeout=aiohttp.ClientTimeout(total=15)
-        ) as response:
-            if response.status != 202:
-                detail = await response.text()
-                raise HomeAssistantError(
-                    f"RF Bridge bootstrap rejected final firmware: {detail}"
-                )
-
     async def async_install(
         self, version: str | None, backup: bool, **kwargs: Any
     ) -> None:
@@ -400,53 +326,21 @@ class RFBridgeFirmwareUpdate(UpdateEntity):
             if not isinstance(device_key_id, str) or not device_key_id:
                 raise HomeAssistantError(
                     "RF Bridge firmware does not report its OTA signing key; "
-                    "a compatible bootstrap firmware is required before OTA updates"
+                    "a locally flashed OTA-capable firmware is required before OTA updates"
                 )
             if device_key_id.lower() != release.signing_key_id:
                 raise HomeAssistantError(
                     "RF Bridge OTA signing key does not match this release; "
                     "the update was not started"
                 )
+            artifact = await _async_stage_release(self.hass, self._hub.entry, release)
             view = _get_download_view(self.hass)
-            final_artifact = await _async_stage_artifact(
-                self.hass,
-                self._hub.entry,
-                url=release.url,
-                sha256=release.sha256,
-                filename=f"{self._hub.entry.entry_id}-{release.version}.bin.gz.signed",
-            )
-            token = view.add(final_artifact)
+            token = view.add(artifact)
             disconnected_after_schedule = False
             try:
-                if _requires_bootstrap(self.installed_version, release.version):
-                    if release.bootstrap is None:
-                        raise HomeAssistantError(
-                            "This RF Bridge requires a signed OTA bootstrap, but the release does not provide one"
-                        )
-                    bootstrap_artifact = await _async_stage_artifact(
-                        self.hass,
-                        self._hub.entry,
-                        url=release.bootstrap.url,
-                        sha256=release.bootstrap.sha256,
-                        filename=f"{self._hub.entry.entry_id}-{release.version}.bootstrap.bin.signed",
-                    )
-                    bootstrap_token = view.add(bootstrap_artifact)
-                    try:
-                        await self._hub.async_schedule_firmware_update(
-                            _local_download_url(self.hass, bootstrap_token)
-                        )
-                    except aiohttp.ClientError as err:
-                        if "WebSocket disconnected" not in str(err):
-                            raise
-                        disconnected_after_schedule = True
-                    if not await self._async_wait_for_bootstrap():
-                        raise HomeAssistantError("RF Bridge bootstrap did not return on Wi-Fi")
-                    await self._async_schedule_bootstrap_final(_local_download_url(self.hass, token))
-                    view.discard(bootstrap_token)
-                else:
-                    await self._hub.async_schedule_firmware_update(
-                        _local_download_url(self.hass, token)
-                    )
+                await self._hub.async_schedule_firmware_update(
+                    _local_download_url(self.hass, token)
+                )
             except aiohttp.ClientError as err:
                 if "WebSocket disconnected" not in str(err):
                     view.discard(token)

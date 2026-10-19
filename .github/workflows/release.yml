@@ -42,19 +42,6 @@ jobs:
           python tools/validate_ota_layout.py .pio/build/sonoff_bridge/firmware.bin
           python tools/check_ota_signing_lifecycle.py
 
-      - name: Build and sign legacy OTA bootstrap
-        env:
-          SIGNING_KEY: ${{ secrets.RF_BRIDGE_SIGNING_PRIVATE_KEY }}
-        run: |
-          test -n "$SIGNING_KEY"
-          umask 077
-          trap 'rm -f signing.key' EXIT
-          printf '%s' "$SIGNING_KEY" > signing.key
-          pio run -d bootstrap -e sonoff_bridge_bootstrap
-          python tools/check_sonoff_bridge_bootstrap_layout.py bootstrap/.pio/build/sonoff_bridge_bootstrap/firmware.bin
-          python tools/package_sonoff_bridge_bootstrap.py bootstrap/.pio/build/sonoff_bridge_bootstrap/firmware.bin --private-key signing.key --signing-tool "$HOME/.platformio/packages/framework-arduinoespressif8266/tools/signing.py" --output release/RFBridge-${GITHUB_REF_NAME#v}-bootstrap.bin.signed
-          python tools/verify_signed_ota_artifact.py release/RFBridge-${GITHUB_REF_NAME#v}-bootstrap.bin.signed --signing-header RFLink/Updater_Signing.h
-
       - name: Sign and package release assets
         env:
           SIGNING_KEY: ${{ secrets.RF_BRIDGE_SIGNING_PRIVATE_KEY }}
@@ -77,9 +64,7 @@ jobs:
             --output-dir release \
             --version "$VERSION" \
             --artifact-url "$ASSET_URL" \
-            --release-url "$RELEASE_URL" \
-            --bootstrap-url "https://github.com/${REPOSITORY}/releases/download/${GITHUB_REF_NAME}/RFBridge-${VERSION}-bootstrap.bin.signed" \
-            --bootstrap-sha256 "$(sha256sum release/RFBridge-${VERSION}-bootstrap.bin.signed | awk '{print $1}')"
+            --release-url "$RELEASE_URL"
           python tools/verify_signed_ota_artifact.py \
             release/firmware.bin.gz.signed \
             --signing-header RFLink/Updater_Signing.h
@@ -96,7 +81,6 @@ jobs:
             gh release upload "$GITHUB_REF_NAME" \
               release/firmware.bin.gz.signed \
               release/manifest.json \
-              release/RFBridge-"${GITHUB_REF_NAME#v}"-bootstrap.bin.signed \
               release/RFBridge-"${GITHUB_REF_NAME#v}"-local-recovery.bin \
               release/RFBridge-"${GITHUB_REF_NAME#v}"-local-recovery.bin.sha256 \
               --clobber
@@ -104,7 +88,6 @@ jobs:
             gh release create "$GITHUB_REF_NAME" \
               release/firmware.bin.gz.signed \
               release/manifest.json \
-              release/RFBridge-"${GITHUB_REF_NAME#v}"-bootstrap.bin.signed \
               release/RFBridge-"${GITHUB_REF_NAME#v}"-local-recovery.bin \
               release/RFBridge-"${GITHUB_REF_NAME#v}"-local-recovery.bin.sha256 \
               --target "$target" \
