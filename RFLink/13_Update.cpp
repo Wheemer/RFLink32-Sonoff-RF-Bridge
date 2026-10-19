@@ -20,6 +20,11 @@ namespace {
   char updateLastError[96] = {0};
   unsigned long updateStartMillis = 0;
   bool updatePending = false;
+  // SHA-256 of the PEM public key compiled into Updater_Signing.h. This is
+  // public metadata used by Home Assistant to reject a mismatched OTA before
+  // the bridge starts downloading it.
+  constexpr char UPDATE_SIGNING_KEY_ID[] =
+    "2cd04321efe940bfcafa11b426412d93db6a8703aba88c4dc141b8e6c4270457";
 
   bool fetchAndApplyUpdate(const char *url, char *error, size_t errorSize)
   {
@@ -101,6 +106,11 @@ namespace RFLink::UpdateSecurity {
   {
     return updateLastError;
   }
+
+  const char *signingKeyId()
+  {
+    return UPDATE_SIGNING_KEY_ID;
+  }
 }
 #else
 namespace RFLink::UpdateSecurity {
@@ -109,5 +119,6 @@ namespace RFLink::UpdateSecurity {
   void maintain() {}
   bool isPending() { return false; }
   const char *lastError() { return ""; }
+  const char *signingKeyId() { return ""; }
 }
 #endif

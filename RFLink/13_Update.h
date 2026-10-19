@@ -6,4 +6,5 @@ namespace RFLink::UpdateSecurity {
   void maintain();
   bool isPending();
   const char *lastError();
+  const char *signingKeyId();
 }

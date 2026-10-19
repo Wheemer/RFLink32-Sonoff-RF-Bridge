@@ -97,11 +97,18 @@ def main() -> None:
         notes = None
         if args.release_notes:
             notes = args.release_notes.read_text(encoding="utf-8")
+        public_key = subprocess.run(
+            ["openssl", "pkey", "-in", str(private_key), "-pubout"],
+            check=True,
+            capture_output=True,
+        ).stdout
+        signing_key_id = hashlib.sha256(public_key).hexdigest()
         manifest = {
             "target": "modified_sonoff_rf_bridge",
             "version": args.version,
             "url": args.artifact_url,
             "sha256": hashlib.sha256(signed.read_bytes()).hexdigest(),
+            "signing_key_id": signing_key_id,
         }
         if args.release_url:
             manifest["release_url"] = args.release_url

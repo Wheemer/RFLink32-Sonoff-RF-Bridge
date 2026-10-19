@@ -260,6 +260,8 @@ namespace RFLink { namespace Portal {
               status[F("hardware")] = F(RFLINK_HARDWARE_NAME);
               status[F("heap_free")] = ESP.getFreeHeap();
               status[F("rf_event_cursor")] = RFLink::getRfEventCursor();
+              status[F("update_signing_key_id")] =
+                RFLink::UpdateSecurity::signingKeyId();
             }
             wsSendJsonToClient(client, wsStatusDoc);
           }
@@ -388,6 +390,8 @@ namespace RFLink { namespace Portal {
                 status[F("hardware")] = F(RFLINK_HARDWARE_NAME);
                 status[F("heap_free")] = ESP.getFreeHeap();
                 status[F("rf_event_cursor")] = RFLink::getRfEventCursor();
+                status[F("update_signing_key_id")] =
+                  RFLink::UpdateSecurity::signingKeyId();
                 if(RFLink::UpdateSecurity::lastError()[0] != 0)
                   status[F("update_error")] = RFLink::UpdateSecurity::lastError();
               }

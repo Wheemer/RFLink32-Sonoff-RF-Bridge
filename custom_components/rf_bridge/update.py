@@ -50,6 +50,7 @@ class FirmwareRelease:
     version: str
     url: str
     sha256: str
+    signing_key_id: str
     release_url: str | None
     release_notes: str | None
 
@@ -62,6 +63,7 @@ def _parse_release(data: Any) -> FirmwareRelease:
     version = data.get("version")
     url = data.get("url")
     sha256 = data.get("sha256")
+    signing_key_id = data.get("signing_key_id")
     if (
         not isinstance(version, str)
         or not version.strip()
@@ -77,6 +79,12 @@ def _parse_release(data: Any) -> FirmwareRelease:
         or any(character not in "0123456789abcdef" for character in sha256.lower())
     ):
         raise ValueError("manifest SHA-256 is invalid")
+    if (
+        not isinstance(signing_key_id, str)
+        or len(signing_key_id) != 64
+        or any(character not in "0123456789abcdef" for character in signing_key_id.lower())
+    ):
+        raise ValueError("manifest signing key ID is invalid")
 
     release_url = data.get("release_url")
     if not isinstance(release_url, str):
@@ -88,6 +96,7 @@ def _parse_release(data: Any) -> FirmwareRelease:
         version=version.strip(),
         url=url,
         sha256=sha256.lower(),
+        signing_key_id=signing_key_id.lower(),
         release_url=release_url,
         release_notes=release_notes,
     )
@@ -262,6 +271,17 @@ class RFBridgeFirmwareUpdate(UpdateEntity):
             release = await _async_fetch_release(self.hass)
             if version is not None and version != release.version:
                 raise HomeAssistantError("Requested RF Bridge firmware version is unavailable")
+            device_key_id = self._hub.status.get("update_signing_key_id")
+            if not isinstance(device_key_id, str) or not device_key_id:
+                raise HomeAssistantError(
+                    "RF Bridge firmware does not report its OTA signing key; "
+                    "a compatible bootstrap firmware is required before OTA updates"
+                )
+            if device_key_id.lower() != release.signing_key_id:
+                raise HomeAssistantError(
+                    "RF Bridge OTA signing key does not match this release; "
+                    "the update was not started"
+                )
             artifact = await _async_stage_release(self.hass, self._hub.entry, release)
             view = _get_download_view(self.hass)
             token = view.add(artifact)
