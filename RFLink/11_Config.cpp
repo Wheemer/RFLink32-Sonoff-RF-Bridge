@@ -796,7 +796,12 @@ namespace RFLink
 
     bool saveConfigToFlash()
     {
-      if(Signal::AsyncSignalScanner::isEnabled())
+      // Only restore scanning when this save interrupted an active receiver.
+      // A transmit operation deliberately stops it, and re-enabling RX while
+      // that operation owns the radio corrupts the mode transition.
+      const bool restartScanner = Signal::AsyncSignalScanner::isEnabled() &&
+        !Signal::AsyncSignalScanner::isStopped();
+      if(restartScanner)
         Signal::AsyncSignalScanner::stopScanning();
 
       Serial.print(F("Saving JSON config to FLASH.... "));
@@ -809,25 +814,54 @@ namespace RFLink
       File file = LittleFS.open(F("/tmp.json"), "w");
       #endif
 
+      if(!file) {
+        Serial.println(F("failed to open temporary config file!"));
+        if(restartScanner)
+          Signal::AsyncSignalScanner::startScanning();
+        return false;
+      }
+
       auto bytes_written = serializeJson(doc, file);
       file.close();
 
       if (bytes_written == 0)
       {
         Serial.println(F("failed!"));
-        if(Signal::AsyncSignalScanner::isEnabled())
+        if(restartScanner)
           Signal::AsyncSignalScanner::startScanning();
         return false;
       }
-      else
-      {
-        if (LittleFS.exists(configFileName))
-          LittleFS.remove(configFileName);
-        LittleFS.rename(F("/tmp.json"), configFileName);
-        Serial.println(F("OK"));
+
+      const char backupFileName[] = "/config.backup";
+      if(LittleFS.exists(backupFileName) && !LittleFS.remove(backupFileName)) {
+        Serial.println(F("failed to remove stale config backup!"));
+        if(restartScanner)
+          Signal::AsyncSignalScanner::startScanning();
+        return false;
       }
 
-      if(Signal::AsyncSignalScanner::isEnabled())
+      const bool hadExistingConfig = LittleFS.exists(configFileName);
+      if(hadExistingConfig && !LittleFS.rename(configFileName, backupFileName)) {
+        Serial.println(F("failed to preserve current config!"));
+        if(restartScanner)
+          Signal::AsyncSignalScanner::startScanning();
+        return false;
+      }
+
+      if(!LittleFS.rename(F("/tmp.json"), configFileName)) {
+        Serial.println(F("failed to install new config!"));
+        if(hadExistingConfig && !LittleFS.rename(backupFileName, configFileName))
+          Serial.println(F("CRITICAL: failed to restore previous config!"));
+        if(restartScanner)
+          Signal::AsyncSignalScanner::startScanning();
+        return false;
+      }
+
+      if(hadExistingConfig && LittleFS.exists(backupFileName) && !LittleFS.remove(backupFileName))
+        Serial.println(F("warning: config backup cleanup failed"));
+
+      Serial.println(F("OK"));
+      if(restartScanner)
         Signal::AsyncSignalScanner::startScanning();
 
       return true;

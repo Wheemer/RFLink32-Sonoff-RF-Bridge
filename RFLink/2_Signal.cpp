@@ -1244,6 +1244,12 @@ namespace RFLink
 
     }
 
+    bool commandMatches(const char *command, size_t commandSize, const char *expected)
+    {
+      return commandSize == strlen_P(expected) &&
+        strncasecmp_P(command, expected, commandSize) == 0;
+    }
+
     bool executeCliCommand(char *cmd)
     {
       static const char error_command_aborted[] PROGMEM = "An error occurred, invalid signal was given. Command aborted!";
@@ -1260,7 +1266,7 @@ namespace RFLink
 
       *commaIndex = 0; // replace ';' with null termination
 
-      if (strncasecmp_P(cmd, commands::sendRF, commandSize) == 0)
+      if (commandMatches(cmd, commandSize, commands::sendRF))
       {
         if(Radio::pins::TX_DATA == NOT_A_PIN) {
           setTxLastError("TX_DATA pin undefined");
@@ -1288,7 +1294,7 @@ namespace RFLink
         Serial.println(F("done"));
         return true;
       }
-      else if (strncasecmp_P(cmd, commands::testRF, commandSize) == 0)
+      else if (commandMatches(cmd, commandSize, commands::testRF))
       {
         RawSignal.readyForDecoder = true;
 
@@ -1312,7 +1318,7 @@ namespace RFLink
         RawSignal.readyForDecoder = false;
         return false;
       }
-      else if (strncasecmp_P(cmd, commands::testRFMoveForward, commandSize) == 0)
+      else if (commandMatches(cmd, commandSize, commands::testRFMoveForward))
       {
         if(!getSignalFromJson(RawSignal, commaIndex+1)) {
           Serial.println(FPSTR(error_command_aborted));
@@ -1336,19 +1342,19 @@ namespace RFLink
           }
 
           RawSignal.Number -= 2;
-          memcpy((void *)&RawSignal.Pulses[1], (void *)&RawSignal.Pulses[3], sizeof(uint16_t)*RawSignal.Number);
+          memmove((void *)&RawSignal.Pulses[1], (void *)&RawSignal.Pulses[3], sizeof(uint16_t)*RawSignal.Number);
           yield();
         }
 
       }
-      else if (strncasecmp_P(cmd, commands::enableVerboseSignalFetchLoop, commandSize) == 0) {
+      else if (commandMatches(cmd, commandSize, commands::enableVerboseSignalFetchLoop)) {
         runtime::verboseSignalFetchLoop = true;
         sendRawPrint(PSTR("30;verboseSignalFetchLoop"));
         sendRawPrint(PSTR(" enabled;"),true);
         RawSignal.readyForDecoder = false;
         return true;
       }
-      else if (strncasecmp_P(cmd, commands::disableVerboseSignalFetchLoop, commandSize) == 0) {
+      else if (commandMatches(cmd, commandSize, commands::disableVerboseSignalFetchLoop)) {
         runtime::verboseSignalFetchLoop = false;
         sendRawPrint(PSTR("30;verboseSignalFetchLoop"));
         sendRawPrint(PSTR(" disabled;"),true);
