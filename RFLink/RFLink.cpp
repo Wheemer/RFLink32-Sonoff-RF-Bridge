@@ -172,7 +172,6 @@ namespace RFLink {
 #endif // ESP8266
       Serial.print(F("Sketch File :\t\t"));
       Serial.println(F(__FILE__)); // "RFLink.ino" version is in 20;00 Message
-      Serial.println(F("Compiled on :\t\t" __DATE__ " at " __TIME__));
 
       display_Header();
       display_Splash();
