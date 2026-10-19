@@ -26,7 +26,16 @@ jobs:
         run: python tools/check_release_version.py --tag "$GITHUB_REF_NAME"
 
       - name: Build the modified Sonoff RF Bridge firmware
-        run: pio run -e sonoff_bridge
+        run: |
+          for attempt in 1 2 3; do
+            if pio run -e sonoff_bridge; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep 15
+          done
 
       - name: Validate OTA staging layout
         run: python tools/validate_ota_layout.py .pio/build/sonoff_bridge/firmware.bin
