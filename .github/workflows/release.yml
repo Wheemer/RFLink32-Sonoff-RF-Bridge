@@ -43,7 +43,7 @@ jobs:
           RELEASE_URL="https://github.com/${REPOSITORY}/releases/tag/${GITHUB_REF_NAME}"
           python tools/check_ota_signing_identity.py \
             --private-key signing.key \
-            --firmware-source RFLink/13_Update.cpp
+            --firmware-source RFLink/13_Update.cpp --signing-header RFLink/Updater_Signing.h
           python tools/package_sonoff_bridge_update.py .pio/build/sonoff_bridge/firmware.bin \
             --private-key signing.key \
             --signing-tool "$HOME/.platformio/packages/framework-arduinoespressif8266/tools/signing.py" \
