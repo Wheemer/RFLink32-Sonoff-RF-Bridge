@@ -365,13 +365,14 @@ class RFBridgeHub:
                     identifiers = self.entry.data.get(CONF_IDENTIFIERS) or [
                         self.entry.entry_id
                     ]
-                    device = device_registry.async_get_device(
-                        identifiers={(DOMAIN, identifier) for identifier in identifiers}
-                    )
-                    if device is not None:
-                        device_registry.async_update_device(
-                            device.id, sw_version=live_version
+                    for identifier in identifiers:
+                        device = device_registry.async_get_device_by_identifier(
+                            (DOMAIN, identifier)
                         )
+                        if device is not None:
+                            device_registry.async_update_device(
+                                device.id, sw_version=live_version
+                            )
             cursor = payload.get("cursor")
             if isinstance(cursor, int):
                 self.rf_event_cursor = cursor
