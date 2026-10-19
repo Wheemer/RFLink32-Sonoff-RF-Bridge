@@ -12,9 +12,17 @@ permissions:
 
 jobs:
   analyze:
-    name: Analyze firmware and integration
+    name: Analyze ${{ matrix.language }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: c-cpp
+            build_mode: manual
+          - language: python
+            build_mode: none
 
     steps:
       - uses: actions/checkout@v5
@@ -26,10 +34,11 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
-          languages: c-cpp, python
-          build-mode: manual
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build_mode }}
 
       - name: Build the modified Sonoff RF Bridge firmware
+        if: matrix.language == 'c-cpp'
         run: |
           python -m pip install --upgrade platformio
           pio run -e sonoff_bridge
