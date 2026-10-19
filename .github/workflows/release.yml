@@ -51,6 +51,9 @@ jobs:
             --version "$VERSION" \
             --artifact-url "$ASSET_URL" \
             --release-url "$RELEASE_URL"
+          python tools/verify_signed_ota_artifact.py \
+            release/firmware.bin.gz.signed \
+            --signing-header RFLink/Updater_Signing.h
 
       - name: Publish GitHub release
         env:

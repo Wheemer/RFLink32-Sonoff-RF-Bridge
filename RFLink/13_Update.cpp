@@ -14,9 +14,6 @@ namespace {
   constexpr unsigned int HTTP_UPDATE_TIMEOUT_MS = 15000;
   constexpr uint32_t UPDATE_SIGNATURE_BYTES = 256;
 
-  BearSSL::PublicKey updateSigningPublicKey(signing_pubkey);
-  BearSSL::HashSHA256 updateSigningHash;
-  BearSSL::SigningVerifier updateSigningVerifier(&updateSigningPublicKey);
   char pendingUpdateUrl[MAX_UPDATE_URL_BYTES] = {0};
   char updateLastError[96] = {0};
   unsigned long updateStartMillis = 0;
@@ -27,14 +24,25 @@ namespace {
   constexpr char UPDATE_SIGNING_KEY_ID[] =
     "2cd04321efe940bfcafa11b426412d93db6a8703aba88c4dc141b8e6c4270457";
 
-  bool signingVerifierReady()
-  {
-    return updateSigningPublicKey.isRSA()
-      && updateSigningVerifier.length() == UPDATE_SIGNATURE_BYTES;
-  }
-
   bool fetchAndApplyUpdate(const char *url, char *error, size_t errorSize)
   {
+    // Construct the verifier only when OTA is first used, then retain it.
+    // SigningVerifier reserves the ESP8266's secondary crypto stack, so a
+    // per-attempt object would leak that reservation. Reinstall it directly
+    // before every update, as required by the updater's singleton API.
+    static BearSSL::PublicKey signingKey(signing_pubkey);
+    if(!signingKey.isRSA()) {
+      snprintf(error, errorSize, "Embedded OTA signing key is invalid");
+      return false;
+    }
+    static BearSSL::HashSHA256 signingHash;
+    static BearSSL::SigningVerifier signingVerifier(&signingKey);
+    if(signingVerifier.length() != UPDATE_SIGNATURE_BYTES) {
+      snprintf(error, errorSize, "Embedded OTA signing verifier is invalid");
+      return false;
+    }
+    Update.installSignature(&signingHash, &signingVerifier);
+
     ESP8266HTTPUpdate updater(HTTP_UPDATE_TIMEOUT_MS);
     updater.rebootOnUpdate(false);
     WiFiClient client;
@@ -56,23 +64,10 @@ namespace {
 namespace RFLink::UpdateSecurity {
   void setup()
   {
-    if(!signingVerifierReady()) {
-      snprintf(
-        updateLastError, sizeof(updateLastError),
-        "Embedded OTA signing key is invalid"
-      );
-      return;
-    }
-    Update.installSignature(&updateSigningHash, &updateSigningVerifier);
   }
 
   bool schedule(const char *url, const char *&error)
   {
-    if(!signingVerifierReady()) {
-      error = "Embedded OTA signing key is invalid";
-      return false;
-    }
-
     if(url == nullptr || strncmp(url, "http://", 7) != 0) {
       error = "Only an http update URL is supported";
       return false;

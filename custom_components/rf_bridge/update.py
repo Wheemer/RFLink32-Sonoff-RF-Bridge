@@ -142,6 +142,8 @@ class FirmwareDownloadView(HomeAssistantView):
         artifact = self._downloads.get(token)
         if artifact is None or not artifact.is_file():
             raise web.HTTPNotFound()
+        payload = await asyncio.to_thread(artifact.read_bytes)
+        payload_sha256 = hashlib.sha256(payload).hexdigest()
         # OTA clients may retry a partial download. Keep the unguessable URL
         # live until the caller verifies the bridge version or reports failure.
         request_count = self._download_count.get(token, 0) + 1
@@ -151,9 +153,20 @@ class FirmwareDownloadView(HomeAssistantView):
             "remote": request.remote or "",
             "accept_encoding": request.headers.get("Accept-Encoding", ""),
             "range": request.headers.get("Range", ""),
-            "artifact_bytes": artifact.stat().st_size,
+            "artifact_bytes": len(payload),
+            "artifact_sha256": payload_sha256,
         }
-        return web.FileResponse(artifact, headers={"Cache-Control": "no-store"})
+        # A signed OTA payload must be sent byte-for-byte as staged. Avoid
+        # FileResponse negotiation, range handling, and inferred encodings.
+        return web.Response(
+            body=payload,
+            headers={
+                "Cache-Control": "no-store",
+                "Content-Encoding": "identity",
+                "Content-Length": str(len(payload)),
+                "Content-Type": "application/octet-stream",
+            },
+        )
 
 
 def _get_download_view(hass: HomeAssistant) -> FirmwareDownloadView:
