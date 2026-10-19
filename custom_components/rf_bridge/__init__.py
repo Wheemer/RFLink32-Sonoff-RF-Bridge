@@ -315,7 +315,6 @@ class RFBridgeHub:
                     timeout=WS_CONNECT_TIMEOUT,
                 ) as ws:
                     self._ws = ws
-                    self._mark_reachable()
                     async for msg in ws:
                         if msg.type == aiohttp.WSMsgType.TEXT:
                             try:
@@ -400,6 +399,10 @@ class RFBridgeHub:
             self.rf_event_cursor = max(self.rf_event_cursor, sequence)
         self.last_rf_event = event
         if event.get("raw") is True and event.get("command"):
+            # Raw events are only actionable when the user explicitly armed
+            # learning. Preserve that state on the event before disarming so
+            # the event platform cannot admit unsolicited raw traffic.
+            event["learning"] = self.status.get("raw_learning_armed") is True
             self._cancel_learning_expiry()
             self.status["raw_learning_armed"] = False
         self.async_write_diagnostics()
@@ -475,7 +478,6 @@ class RFBridgeHub:
         try:
             return await asyncio.wait_for(future, timeout=timeout)
         except TimeoutError as err:
-            self._pending.pop(request_id, None)
             if self._ws is not None and not self._ws.closed:
                 await self._ws.close()
             self._mark_unreachable(
@@ -500,6 +502,8 @@ class RFBridgeHub:
             raise ServiceValidationError(
                 f"RF Bridge timed out waiting for {payload.get('type')} on {self.host}"
             ) from err
+        finally:
+            self._pending.pop(request_id, None)
 
     async def async_get_status(self) -> dict[str, Any]:
         """Return cached status pushed by the WebSocket hello message."""

@@ -44,7 +44,7 @@ class RFBridgeRfEventEntity(EventEntity):
 
     @property
     def available(self) -> bool:
-        return True
+        return self._hub.available
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(
@@ -64,9 +64,12 @@ class RFBridgeRfEventEntity(EventEntity):
         known_commands = self._hub.entry.options.get(CONF_KNOWN_COMMANDS, {})
         if isinstance(known_commands, dict):
             annotate_known_command(event_data, known_commands)
-        if event_data.get("known") is not True and not (
-            event.get("raw") is True and event.get("command")
-        ):
+        raw_capture = (
+            event.get("raw") is True
+            and event.get("command")
+            and event.get("learning") is True
+        )
+        if event_data.get("known") is not True and not raw_capture:
             return
         event_data["sequence"] = event.get("sequence")
         event_data["device_millis"] = event.get("millis")

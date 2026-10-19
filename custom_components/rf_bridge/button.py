@@ -43,7 +43,7 @@ class RFBridgeButtonBase(ButtonEntity):
 
     @property
     def available(self) -> bool:
-        return True
+        return self._hub.available
 
 
 class RFBridgeRebootButton(RFBridgeButtonBase):

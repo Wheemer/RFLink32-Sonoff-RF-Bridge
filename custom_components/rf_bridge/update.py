@@ -39,6 +39,7 @@ MANIFEST_TARGET = "modified_sonoff_rf_bridge"
 MAX_FIRMWARE_BYTES = 450_000
 DOWNLOAD_ROUTE = "/api/rf_bridge/firmware/{token}"
 DOWNLOAD_VIEW_KEY = "firmware_download_view"
+DOWNLOAD_VIEW_DATA_KEY = f"{DOMAIN}_{DOWNLOAD_VIEW_KEY}"
 FIRMWARE_UPDATE_VERIFY_SECONDS = 45
 VERSION_CHARACTERS = "0123456789.-_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -111,28 +112,41 @@ class FirmwareDownloadView(HomeAssistantView):
 
     def __init__(self) -> None:
         self._downloads: dict[str, Path] = {}
+        self._download_count: dict[str, int] = {}
 
     def add(self, artifact: Path) -> str:
         """Register an unguessable URL for a signed artifact."""
         token = secrets.token_urlsafe(32)
         self._downloads[token] = artifact
+        self._download_count[token] = 0
         return token
 
     def discard(self, token: str) -> None:
         """Remove a staged download URL after a rejected update request."""
         self._downloads.pop(token, None)
+        self._download_count.pop(token, None)
+
+    def downloaded(self, token: str) -> bool:
+        """Return whether the bridge requested this staged artifact."""
+        return self._download_count.get(token, 0) > 0
 
     async def get(self, request: web.Request, token: str) -> web.StreamResponse:
         """Return a registered signed artifact and nothing else."""
         del request
-        artifact = self._downloads.pop(token, None)
+        artifact = self._downloads.get(token)
         if artifact is None or not artifact.is_file():
             raise web.HTTPNotFound()
+        # OTA clients may retry a partial download. Keep the unguessable URL
+        # live until the caller verifies the bridge version or reports failure.
+        self._download_count[token] = self._download_count.get(token, 0) + 1
         return web.FileResponse(artifact, headers={"Cache-Control": "no-store"})
 
 
 def _get_download_view(hass: HomeAssistant) -> FirmwareDownloadView:
-    data = hass.data.setdefault(DOMAIN, {})
+    # Keep process-wide HTTP view state out of the per-entry hub registry.
+    # The registry is also used to resolve services and decide whether they
+    # must be removed on unload.
+    data = hass.data.setdefault(DOWNLOAD_VIEW_DATA_KEY, {})
     view = data.get(DOWNLOAD_VIEW_KEY)
     if isinstance(view, FirmwareDownloadView):
         return view
@@ -296,7 +310,7 @@ class RFBridgeFirmwareUpdate(UpdateEntity):
                     raise
                 # The bridge starts the fetch immediately after accepting the
                 # request, which legitimately closes its WebSocket on reboot.
-                # Keep the one-time URL alive through that transition.
+                # Keep the staged URL alive through that transition.
                 disconnected_after_schedule = True
                 _LOGGER.debug(
                     "RF Bridge disconnected while starting firmware update; "
@@ -318,12 +332,15 @@ class RFBridgeFirmwareUpdate(UpdateEntity):
                     _LOGGER.debug(
                         "Could not obtain RF Bridge update failure detail: %s", err
                     )
+                downloaded = view.downloaded(token)
                 view.discard(token)
                 reason = (
                     "after scheduling the update"
                     if disconnected_after_schedule
                     else "while waiting for the update"
                 )
+                if not downloaded:
+                    reason = f"{reason}; the bridge never requested the staged artifact"
                 if update_error is not None:
                     reason = f"{reason}: {update_error}"
                 raise HomeAssistantError(
@@ -331,6 +348,7 @@ class RFBridgeFirmwareUpdate(UpdateEntity):
                 )
             self._release = release
             self.async_write_ha_state()
+            view.discard(token)
 
 
 async def async_setup_entry(
