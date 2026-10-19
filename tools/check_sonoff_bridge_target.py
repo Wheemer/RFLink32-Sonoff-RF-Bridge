@@ -46,7 +46,7 @@ def main() -> None:
     require(websocket, "if(info->index + len >= sizeof(activeJob.command))")
     for setting in (
         "INPUT_COMMAND_SIZE = 2000",
-        "WS_INBOUND_SIZE = INPUT_COMMAND_SIZE + 128",
+        "WS_INBOUND_SIZE = INPUT_COMMAND_SIZE",
         "if len(command) >= INPUT_COMMAND_SIZE - 1:",
         "if ws_envelope_len >= WS_INBOUND_SIZE:",
     ):

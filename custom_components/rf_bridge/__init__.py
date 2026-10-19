@@ -52,7 +52,9 @@ WS_COMMAND_TIMEOUT_MARGIN = 10
 SENDRF_PREFIX = "10;signal;sendRF;"
 RAW_BUFFER_SIZE = 512
 INPUT_COMMAND_SIZE = 2000
-WS_INBOUND_SIZE = INPUT_COMMAND_SIZE + 128
+# The bridge parses each complete WebSocket envelope into its 2 KB command
+# buffer. Keep preflight validation at that exact transport boundary.
+WS_INBOUND_SIZE = INPUT_COMMAND_SIZE
 MAX_TX_MS = 120_000
 DEFAULT_SEQUENCE_DELAY = 0.6
 MAX_SEQUENCE_DELAY = 10.0
