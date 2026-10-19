@@ -41,6 +41,7 @@ jobs:
         run: |
           python tools/validate_ota_layout.py .pio/build/sonoff_bridge/firmware.bin
           python tools/check_ota_signing_lifecycle.py
+          python tools/check_wifi_setup_page.py
 
       - name: Sign and package release assets
         env:
