@@ -605,6 +605,11 @@ class RFBridgeHub:
         self.last_success = True
         self.async_write_diagnostics()
 
+        # Close the persistent Home Assistant socket before the bootstrap
+        # updater starts so it does not compete with signed flash writes.
+        if self._ws is not None and not self._ws.closed:
+            await self._ws.close()
+
     async def async_send_named(self, command_key: str) -> dict[str, Any]:
         if command_key not in self.commands:
             raise ServiceValidationError(
@@ -830,7 +835,7 @@ def validate_sendrf_command(command: str) -> None:
 
     pulses = payload.get("pulses")
     if not isinstance(pulses, list):
-        raise ValueError("sendRF command must include a pulses list")
+        raise TypeError("sendRF command must include a pulses list")
     if len(pulses) < 2:
         raise ValueError("sendRF command must include at least two pulses")
     if len(pulses) > RAW_BUFFER_SIZE:

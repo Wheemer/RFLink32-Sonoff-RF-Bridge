@@ -1,20 +1,20 @@
 from __future__ import annotations
 
-import aiohttp
 import json
 from typing import Any
 
+import aiohttp
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.exceptions import ServiceValidationError
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from . import async_fetch_bridge_status, parse_commands
 from .const import (
+    CONF_API_PORT,
     CONF_COMMANDS,
     CONF_HOST,
     CONF_HW_VERSION,
@@ -23,7 +23,6 @@ from .const import (
     CONF_MODEL,
     CONF_NAME,
     CONF_SW_VERSION,
-    CONF_API_PORT,
     DEFAULT_API_PORT,
     DOMAIN,
 )
@@ -54,7 +53,7 @@ def _known_commands_from_text(text: str) -> dict[str, Any]:
         return {}
     data = json.loads(text)
     if not isinstance(data, dict):
-        raise ValueError("Known commands must be a JSON object")
+        raise TypeError("Known commands must be a JSON object")
     for key, value in data.items():
         if not isinstance(key, str) or not key:
             raise ValueError("Known command keys must be non-empty strings")

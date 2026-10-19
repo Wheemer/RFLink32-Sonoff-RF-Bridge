@@ -113,6 +113,7 @@ class FirmwareDownloadView(HomeAssistantView):
     def __init__(self) -> None:
         self._downloads: dict[str, Path] = {}
         self._download_count: dict[str, int] = {}
+        self._download_audit: dict[str, dict[str, str | int]] = {}
 
     def add(self, artifact: Path) -> str:
         """Register an unguessable URL for a signed artifact."""
@@ -125,20 +126,33 @@ class FirmwareDownloadView(HomeAssistantView):
         """Remove a staged download URL after a rejected update request."""
         self._downloads.pop(token, None)
         self._download_count.pop(token, None)
+        self._download_audit.pop(token, None)
 
     def downloaded(self, token: str) -> bool:
         """Return whether the bridge requested this staged artifact."""
         return self._download_count.get(token, 0) > 0
 
+    def audit(self, token: str) -> dict[str, str | int] | None:
+        """Return the last request metadata for a staged artifact."""
+        audit = self._download_audit.get(token)
+        return dict(audit) if audit is not None else None
+
     async def get(self, request: web.Request, token: str) -> web.StreamResponse:
         """Return a registered signed artifact and nothing else."""
-        del request
         artifact = self._downloads.get(token)
         if artifact is None or not artifact.is_file():
             raise web.HTTPNotFound()
         # OTA clients may retry a partial download. Keep the unguessable URL
         # live until the caller verifies the bridge version or reports failure.
-        self._download_count[token] = self._download_count.get(token, 0) + 1
+        request_count = self._download_count.get(token, 0) + 1
+        self._download_count[token] = request_count
+        self._download_audit[token] = {
+            "requests": request_count,
+            "remote": request.remote or "",
+            "accept_encoding": request.headers.get("Accept-Encoding", ""),
+            "range": request.headers.get("Range", ""),
+            "artifact_bytes": artifact.stat().st_size,
+        }
         return web.FileResponse(artifact, headers={"Cache-Control": "no-store"})
 
 
@@ -333,6 +347,11 @@ class RFBridgeFirmwareUpdate(UpdateEntity):
                         "Could not obtain RF Bridge update failure detail: %s", err
                     )
                 downloaded = view.downloaded(token)
+                request_audit = view.audit(token)
+                if request_audit is not None:
+                    _LOGGER.debug(
+                        "RF Bridge staged firmware request audit: %s", request_audit
+                    )
                 view.discard(token)
                 reason = (
                     "after scheduling the update"

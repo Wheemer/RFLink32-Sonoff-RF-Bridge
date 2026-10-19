@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from homeassistant.components.event import EventDeviceClass, EventEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import (
     RFBridgeHub,
@@ -28,7 +28,7 @@ async def async_setup_entry(
 
 class RFBridgeRfEventEntity(EventEntity):
     _attr_device_class = EventDeviceClass.BUTTON
-    _attr_event_types = ["press"]
+    _attr_event_types: ClassVar[list[str]] = ["press"]
     _attr_has_entity_name = True
     _attr_should_poll = False
     _attr_icon = "mdi:radio-tower"
