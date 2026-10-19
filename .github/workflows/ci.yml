@@ -13,10 +13,10 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: actions/setup-python@v6
         with:
@@ -69,7 +69,7 @@ jobs:
         run: python tools/validate_ota_layout.py .pio/build/sonoff_bridge/firmware.bin
 
       - name: Upload RF Bridge firmware artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: modified-sonoff-rf-bridge-firmware
           path: .pio/build/sonoff_bridge/firmware.bin
