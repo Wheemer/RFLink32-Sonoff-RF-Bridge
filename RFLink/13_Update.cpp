@@ -37,7 +37,6 @@ namespace {
   {
     ESP8266HTTPUpdate updater(HTTP_UPDATE_TIMEOUT_MS);
     updater.rebootOnUpdate(false);
-    updater.closeConnectionsOnUpdate(false);
     WiFiClient client;
     const t_httpUpdate_return result = updater.update(
       client, String(url), String(RFLINK_FIRMWARE_VERSION)
