@@ -14,6 +14,7 @@ def main() -> None:
     parser.add_argument("--private-key", type=Path, required=True)
     parser.add_argument("--firmware-source", type=Path, required=True)
     parser.add_argument("--signing-header", type=Path, required=True)
+    parser.add_argument("--firmware", type=Path, required=True)
     args = parser.parse_args()
 
     public_key = subprocess.run(
@@ -42,6 +43,11 @@ def main() -> None:
     if embedded[:-1] != public_key:
         raise SystemExit(
             "Embedded OTA signing public key does not match the release signing key."
+        )
+    firmware = args.firmware.read_bytes()
+    if firmware.count(embedded) != 1:
+        raise SystemExit(
+            "Compiled firmware does not contain exactly one embedded OTA signing key."
         )
     source = args.firmware_source.read_text(encoding="utf-8")
     match = re.search(

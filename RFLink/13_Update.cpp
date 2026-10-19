@@ -12,6 +12,7 @@ namespace {
   constexpr size_t MAX_UPDATE_URL_BYTES = 384;
   constexpr unsigned long UPDATE_START_DELAY_MS = 500;
   constexpr unsigned int HTTP_UPDATE_TIMEOUT_MS = 15000;
+  constexpr uint32_t UPDATE_SIGNATURE_BYTES = 256;
 
   BearSSL::PublicKey updateSigningPublicKey(signing_pubkey);
   BearSSL::HashSHA256 updateSigningHash;
@@ -25,6 +26,12 @@ namespace {
   // the bridge starts downloading it.
   constexpr char UPDATE_SIGNING_KEY_ID[] =
     "2cd04321efe940bfcafa11b426412d93db6a8703aba88c4dc141b8e6c4270457";
+
+  bool signingVerifierReady()
+  {
+    return updateSigningPublicKey.isRSA()
+      && updateSigningVerifier.length() == UPDATE_SIGNATURE_BYTES;
+  }
 
   bool fetchAndApplyUpdate(const char *url, char *error, size_t errorSize)
   {
@@ -50,11 +57,23 @@ namespace {
 namespace RFLink::UpdateSecurity {
   void setup()
   {
+    if(!signingVerifierReady()) {
+      snprintf(
+        updateLastError, sizeof(updateLastError),
+        "Embedded OTA signing key is invalid"
+      );
+      return;
+    }
     Update.installSignature(&updateSigningHash, &updateSigningVerifier);
   }
 
   bool schedule(const char *url, const char *&error)
   {
+    if(!signingVerifierReady()) {
+      error = "Embedded OTA signing key is invalid";
+      return false;
+    }
+
     if(url == nullptr || strncmp(url, "http://", 7) != 0) {
       error = "Only an http update URL is supported";
       return false;
