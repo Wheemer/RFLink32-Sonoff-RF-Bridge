@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -41,7 +41,7 @@ def _bridge_uptime(hub: RFBridgeHub) -> datetime | None:
     if status_at is None:
         status_at = dt_util.utcnow()
     if status_at.tzinfo is None:
-        status_at = status_at.replace(tzinfo=timezone.utc)
+        status_at = status_at.replace(tzinfo=UTC)
     return status_at - timedelta(seconds=value)
 
 
