@@ -649,43 +649,92 @@ class RFBridgeHub:
         sequence_delay: float = DEFAULT_SEQUENCE_DELAY,
     ) -> dict[str, Any]:
         normalized_commands = tuple(normalize_command(command) for command in commands)
-        async with self._tx_lock:
-            results: list[dict[str, Any]] = []
-            for index, command in enumerate(normalized_commands, start=1):
-                results.append(
-                    await self._async_send_raw(
-                        command, command_key=f"{command_key}:{index}"
+        try:
+            async with self._tx_lock:
+                results: list[dict[str, Any]] = []
+                for index, command in enumerate(normalized_commands, start=1):
+                    results.append(
+                        await self._async_send_raw(
+                            command, command_key=f"{command_key}:{index}"
+                        )
                     )
-                )
-                if index != len(normalized_commands):
-                    await asyncio.sleep(sequence_delay)
-            self.last_command_key = command_key
-            self.last_command = f"{len(normalized_commands)} RFLink32 commands"
-            self.last_success = True
-            self.async_write_diagnostics()
-            return {
-                "entry_id": self.entry.entry_id,
-                "host": self.host,
-                "command_key": command_key,
-                "commands": len(normalized_commands),
-                "sequence_delay": sequence_delay,
-                "elapsed_seconds": round(
-                    sum(
-                        result.get("elapsed_seconds") or 0
-                        for result in results
-                        if isinstance(result, dict)
+                    if index != len(normalized_commands):
+                        await asyncio.sleep(sequence_delay)
+                self.last_command_key = command_key
+                self.last_command = f"{len(normalized_commands)} RFLink32 commands"
+                self.last_success = True
+                self.async_write_diagnostics()
+                response = {
+                    "entry_id": self.entry.entry_id,
+                    "host": self.host,
+                    "command_key": command_key,
+                    "commands": len(normalized_commands),
+                    "sequence_delay": sequence_delay,
+                    "elapsed_seconds": round(
+                        sum(
+                            result.get("elapsed_seconds") or 0
+                            for result in results
+                            if isinstance(result, dict)
+                        ),
+                        2,
                     ),
-                    2,
-                ),
-                "sent": True,
-            }
+                    "sent": True,
+                }
+        except Exception as err:
+            self._fire_command_outcome(
+                command_key=command_key, success=False, error=str(err)
+            )
+            raise
+
+        self._fire_command_outcome(
+            command_key=command_key,
+            success=True,
+            elapsed_seconds=response["elapsed_seconds"],
+        )
+        return response
 
     async def async_send_raw(
         self, command: str, *, command_key: str | None = None
     ) -> dict[str, Any]:
         command = normalize_command(command)
-        async with self._tx_lock:
-            return await self._async_send_raw(command, command_key=command_key)
+        try:
+            async with self._tx_lock:
+                response = await self._async_send_raw(command, command_key=command_key)
+        except Exception as err:
+            self._fire_command_outcome(
+                command_key=command_key, success=False, error=str(err)
+            )
+            raise
+
+        self._fire_command_outcome(
+            command_key=command_key,
+            success=True,
+            elapsed_seconds=response.get("elapsed_seconds"),
+        )
+        return response
+
+    def _fire_command_outcome(
+        self,
+        *,
+        command_key: str | None,
+        success: bool,
+        error: str | None = None,
+        elapsed_seconds: float | None = None,
+    ) -> None:
+        """Publish a command result without exposing its raw RF payload."""
+        data: dict[str, Any] = {
+            "entry_id": self.entry.entry_id,
+            "host": self.host,
+            "command_key": command_key,
+        }
+        if success:
+            if elapsed_seconds is not None:
+                data["elapsed_seconds"] = elapsed_seconds
+            event_type = "rf_bridge_command_succeeded"
+        else:
+            data["error"] = error or "Command failed"
+            event_type = "rf_bridge_command_failed"
+        self.hass.bus.async_fire(event_type, data)
 
     async def _async_send_raw(
         self, command: str, *, command_key: str | None = None
