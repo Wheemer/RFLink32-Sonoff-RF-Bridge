@@ -295,11 +295,21 @@ class RFBridgeFirmwareUpdate(UpdateEntity):
             self.async_write_ha_state()
 
     async def _async_wait_for_version(self, version: str) -> bool:
-        """Wait for the bridge to reconnect after a signed update."""
+        """Wait for and directly verify the bridge after a signed update."""
         deadline = asyncio.get_running_loop().time() + FIRMWARE_UPDATE_VERIFY_SECONDS
+        next_probe = 0.0
         while asyncio.get_running_loop().time() < deadline:
             if self._hub.status.get(CONF_SW_VERSION) == version:
                 return True
+            now = asyncio.get_running_loop().time()
+            if now >= next_probe:
+                next_probe = now + 2.0
+                try:
+                    status = await self._hub.async_probe_status()
+                    if status.get(CONF_SW_VERSION) == version:
+                        return True
+                except (aiohttp.ClientError, ValueError) as err:
+                    _LOGGER.debug("RF Bridge has not returned from OTA yet: %s", err)
             await asyncio.sleep(1)
         return self._hub.status.get(CONF_SW_VERSION) == version
 
@@ -349,13 +359,19 @@ class RFBridgeFirmwareUpdate(UpdateEntity):
                 raise
 
             if not await self._async_wait_for_version(release.version):
-                update_error = None
+                update_detail: list[str] = []
                 try:
-                    status = await self._hub.async_refresh_status()
+                    status = await self._hub.async_probe_status()
+                    result = status.get("update_last_result")
+                    if isinstance(result, str) and result:
+                        update_detail.append(f"bridge result={result}")
+                    error_code = status.get("update_last_error_code")
+                    if isinstance(error_code, int) and error_code:
+                        update_detail.append(f"error_code={error_code}")
                     reported_error = status.get("update_error")
                     if isinstance(reported_error, str) and reported_error:
-                        update_error = reported_error
-                except (aiohttp.ClientError, HomeAssistantError) as err:
+                        update_detail.append(reported_error)
+                except (aiohttp.ClientError, HomeAssistantError, ValueError) as err:
                     _LOGGER.debug(
                         "Could not obtain RF Bridge update failure detail: %s", err
                     )
@@ -373,8 +389,8 @@ class RFBridgeFirmwareUpdate(UpdateEntity):
                 )
                 if not downloaded:
                     reason = f"{reason}; the bridge never requested the staged artifact"
-                if update_error is not None:
-                    reason = f"{reason}: {update_error}"
+                if update_detail:
+                    reason = f"{reason}: {'; '.join(update_detail)}"
                 raise HomeAssistantError(
                     f"RF Bridge did not report firmware {release.version} {reason}"
                 )

@@ -524,6 +524,21 @@ class RFBridgeHub:
         self.async_write_diagnostics()
         return status
 
+    async def async_probe_status(self) -> dict[str, Any]:
+        """Read status from a short-lived socket without using the live client."""
+        status = await async_fetch_bridge_status(
+            async_get_clientsession(self.hass), self.host, self.api_port
+        )
+        self.status = status
+        self.last_status_at = dt_util.utcnow().isoformat()
+        # This is deliberately not the persistent command socket. It proves
+        # that the bridge is reachable, but commands must wait for _ws_loop
+        # to establish its own connection.
+        self.available = True
+        self.last_error = None
+        self.async_write_diagnostics()
+        return status
+
     async def async_arm_learning(self) -> None:
         learn_seconds = 30
         # Clear the previous capture before asking the bridge to arm. A remote

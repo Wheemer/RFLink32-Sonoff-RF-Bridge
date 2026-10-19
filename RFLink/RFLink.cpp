@@ -670,6 +670,9 @@ namespace RFLink {
       output["raw_learning_armed"] = rawRfLearningArmed;
       output["update_pending"] = RFLink::UpdateSecurity::isPending();
       output["update_signing_key_id"] = RFLink::UpdateSecurity::signingKeyId();
+      output["update_last_result"] = RFLink::UpdateSecurity::lastResult();
+      output["update_last_error_code"] = RFLink::UpdateSecurity::lastErrorCode();
+      output["update_last_attempt"] = RFLink::UpdateSecurity::lastAttempt();
       if(RFLink::UpdateSecurity::lastError()[0] != 0)
         output["update_error"] = RFLink::UpdateSecurity::lastError();
       output["tx_started_count"] = RFLink::Signal::runtime::txStartedCount;

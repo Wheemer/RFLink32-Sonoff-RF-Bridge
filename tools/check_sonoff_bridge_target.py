@@ -24,6 +24,7 @@ def main() -> None:
     update = ROOT / "RFLink" / "13_Update.cpp"
     serial = ROOT / "RFLink" / "3_Serial.h"
     integration = ROOT / "custom_components" / "rf_bridge" / "__init__.py"
+    integration_update = ROOT / "custom_components" / "rf_bridge" / "update.py"
 
     for setting in (
         "[env:sonoff_bridge]",
@@ -109,6 +110,30 @@ def main() -> None:
     ):
         require(core, setting)
     require(update, "RFLink::markRebootSource(RFLink::RebootSource::SignedUpdate);")
+    for setting in (
+        'constexpr char OTA_STATE_FILE_A[] = "/ota-state-a.bin";',
+        'constexpr char OTA_STATE_FILE_B[] = "/ota-state-b.bin";',
+        "bool persistState(UpdateResult result, int32_t errorCode, const char *detail)",
+        "if(!persistState(UpdateResult::Scheduled, 0, \"\"))",
+        "if(!persistState(UpdateResult::Fetching, 0, \"\"))",
+        "persistState(UpdateResult::Failed, errorCode, updateLastError);",
+        "if(!persistState(UpdateResult::Staged, 0, \"Firmware staged; restarting\"))",
+        "updater.closeConnectionsOnUpdate(false);",
+    ):
+        require(update, setting)
+    for setting in (
+        'output["update_last_result"] = RFLink::UpdateSecurity::lastResult();',
+        'output["update_last_error_code"] = RFLink::UpdateSecurity::lastErrorCode();',
+        'output["update_last_attempt"] = RFLink::UpdateSecurity::lastAttempt();',
+    ):
+        require(core, setting)
+    require(integration, "async def async_probe_status(self) -> dict[str, Any]:")
+    require(integration, "self.available = True")
+    if "self._mark_reachable()" in integration.read_text(encoding="utf-8").split(
+        "async def async_probe_status", 1
+    )[1].split("async def", 1)[0]:
+        raise SystemExit("One-shot OTA probes must not claim the persistent WebSocket is connected")
+    require(integration_update, "status = await self._hub.async_probe_status()")
 
 
 if __name__ == "__main__":

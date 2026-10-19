@@ -392,6 +392,9 @@ namespace RFLink { namespace Portal {
                 status[F("rf_event_cursor")] = RFLink::getRfEventCursor();
                 status[F("update_signing_key_id")] =
                   RFLink::UpdateSecurity::signingKeyId();
+                status[F("update_last_result")] = RFLink::UpdateSecurity::lastResult();
+                status[F("update_last_error_code")] = RFLink::UpdateSecurity::lastErrorCode();
+                status[F("update_last_attempt")] = RFLink::UpdateSecurity::lastAttempt();
                 if(RFLink::UpdateSecurity::lastError()[0] != 0)
                   status[F("update_error")] = RFLink::UpdateSecurity::lastError();
               }
