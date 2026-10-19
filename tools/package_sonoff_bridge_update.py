@@ -39,6 +39,8 @@ def main() -> None:
     parser.add_argument("--artifact-url")
     parser.add_argument("--release-url")
     parser.add_argument("--release-notes", type=Path)
+    parser.add_argument("--bootstrap-url")
+    parser.add_argument("--bootstrap-sha256")
     args = parser.parse_args()
 
     firmware = args.firmware.resolve()
@@ -114,6 +116,17 @@ def main() -> None:
             manifest["release_url"] = args.release_url
         if notes:
             manifest["release_notes"] = notes
+        if bool(args.bootstrap_url) != bool(args.bootstrap_sha256):
+            raise SystemExit("Bootstrap URL and SHA-256 must be provided together.")
+        if args.bootstrap_url:
+            if not args.bootstrap_url.startswith("https://"):
+                raise SystemExit("Bootstrap URL must use HTTPS.")
+            if len(args.bootstrap_sha256) != 64:
+                raise SystemExit("Bootstrap SHA-256 is invalid.")
+            manifest["bootstrap"] = {
+                "url": args.bootstrap_url,
+                "sha256": args.bootstrap_sha256,
+            }
         manifest_path = output_dir / "manifest.json"
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         print(f"manifest={manifest_path}")
