@@ -9,6 +9,10 @@ import tempfile
 from pathlib import Path
 from typing import ClassVar
 
+# Home Assistant installs its bundled validation compatibility layer during
+# package import. Mirror that order before importing the integration.
+import homeassistant  # noqa: F401
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from custom_components.rf_bridge.update import FirmwareDownloadView
