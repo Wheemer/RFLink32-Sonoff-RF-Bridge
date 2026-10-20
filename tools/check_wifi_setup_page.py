@@ -47,6 +47,12 @@ if missing:
 if "saved network" in page:
     raise SystemExit("Wi-Fi portal must not include a saved-network fallback")
 
+if "payload.selected" in page or 'root[F("selected")]' in source:
+    raise SystemExit("Wi-Fi portal must not restore a configured-network selection")
+
+if "select.options.length === 0" not in page:
+    raise SystemExit("Wi-Fi portal must preselect the strongest fresh scan result")
+
 if "wifiSetupPageStable" in source or "wifiSetupOptions" in source or "AsyncResponseStream" in source:
     raise SystemExit("legacy Wi-Fi portal renderer remains active")
 
