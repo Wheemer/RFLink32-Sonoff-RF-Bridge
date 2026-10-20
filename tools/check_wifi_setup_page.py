@@ -26,11 +26,14 @@ missing = [fragment for fragment in required if fragment not in source]
 if missing:
     raise SystemExit("Wi-Fi setup page is incomplete: " + ", ".join(missing))
 
+if source.count("static const char wifiSetupPage") != 1:
+    raise SystemExit("Wi-Fi setup source must contain exactly one portal template")
+
 handler_start = source.index("void serveWifiSetupPage")
 handler_end = source.index("void serveWifiSetupPost", handler_start)
 handler = source[handler_start:handler_end]
-if handler.index("request->send(staticResponse);") > handler.index("AsyncResponseStream"):
-    raise SystemExit("Wi-Fi setup page must use the flash-backed response before any response stream")
+if "AsyncResponseStream" in handler:
+    raise SystemExit("Wi-Fi setup page must not retain a streamed fallback renderer")
 
 if "wifiSetupPageStable" not in handler:
     raise SystemExit("Wi-Fi setup handler is not serving the stable portal markup")
