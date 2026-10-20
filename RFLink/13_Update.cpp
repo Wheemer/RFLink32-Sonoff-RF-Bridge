@@ -176,11 +176,10 @@ namespace {
 
     ESP8266HTTPUpdate updater(HTTP_UPDATE_TIMEOUT_MS);
     updater.rebootOnUpdate(false);
-    // Keep only the updater's download socket once the HTTP response has
-    // arrived. This is ESP8266HTTPUpdate's safe default and releases the
-    // memory previously held by API clients before flash-write buffers are
-    // allocated.
-    updater.closeConnectionsOnUpdate(true);
+    // Home Assistant closes its long-lived socket after the bridge returns
+    // update_scheduled. Do not globally tear down network clients here: the
+    // async API remains responsible for its own connection lifecycle.
+    updater.closeConnectionsOnUpdate(false);
     WiFiClient client;
     const t_httpUpdate_return result = updater.update(
       client, String(url), String(RFLINK_FIRMWARE_VERSION)
@@ -260,14 +259,6 @@ namespace RFLink::UpdateSecurity {
     RFLink::Signal::RawSignal.readyForDecoder = false;
     RFLink::Signal::RawSignal.Number = 0;
     RFLink::Signal::RawSignal.Time = 0;
-    // The update acknowledgement has already reached Home Assistant. Drain
-    // the persistent API client before allocating the signed updater's HTTP
-    // buffers so the ESP8285 never has to hold both paths at once.
-    RFLink::Portal::closeWebSocketClients();
-    RFLink::Portal::cleanupWebSocketClients();
-    delay(100);
-    yield();
-    ESP.wdtFeed();
     int32_t errorCode = -1;
     if(!fetchAndApplyUpdate(pendingUpdateUrl, updateLastError, sizeof(updateLastError), errorCode)) {
       persistState(UpdateResult::Failed, errorCode, updateLastError);

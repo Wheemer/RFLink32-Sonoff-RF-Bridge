@@ -1025,7 +1025,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # The socket may receive its hello frame before every forwarded platform
     # has attached its dispatcher listener. Publish once on the next loop turn
     # so availability-derived entities cannot remain stuck at their startup state.
-    async_call_later(hass, 0, lambda _: hub.async_write_diagnostics())
+    @callback
+    def _async_publish_initial_diagnostics(_: datetime) -> None:
+        hub.async_write_diagnostics()
+
+    async_call_later(hass, 0, _async_publish_initial_diagnostics)
     return True
 
 

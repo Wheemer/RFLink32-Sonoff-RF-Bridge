@@ -20,4 +20,5 @@ for source, label in ((button, "button"), (event, "event")):
     require(source, "diagnostics_signal(self._hub.entry.entry_id)", label)
     require(source, "self.async_write_ha_state", label)
 
-require(init, "async_call_later(hass, 0, lambda _: hub.async_write_diagnostics())", "startup state refresh")
+require(init, "@callback\n    def _async_publish_initial_diagnostics", "event-loop startup callback")
+require(init, "async_call_later(hass, 0, _async_publish_initial_diagnostics)", "startup state refresh")

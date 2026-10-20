@@ -18,6 +18,14 @@ def main() -> None:
         raise SystemExit("OTA signing context must persist for the firmware lifetime.")
     if "Update.installSignature(&context.hash, &context.verifier);" not in source:
         raise SystemExit("OTA update path does not use the prepared signing context.")
+    if "updater.closeConnectionsOnUpdate(false);" not in source:
+        raise SystemExit("OTA must preserve the API connection until Home Assistant closes it.")
+    maintain_start = source.index("  void maintain()")
+    maintain_source = source[maintain_start:]
+    if "RFLink::Portal::closeWebSocketClients();" in maintain_source:
+        raise SystemExit("OTA maintain path must not force-close all WebSocket clients.")
+    if "RFLink::Portal::cleanupWebSocketClients();" in maintain_source:
+        raise SystemExit("OTA maintain path must not clean up WebSocket clients before the update hand-off.")
     print("ota_signing_lifecycle=setup_initialized")
 
 

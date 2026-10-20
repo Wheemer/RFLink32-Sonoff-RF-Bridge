@@ -118,7 +118,7 @@ def main() -> None:
         "if(!persistState(UpdateResult::Fetching, 0, \"\"))",
         "persistState(UpdateResult::Failed, errorCode, updateLastError);",
         "if(!persistState(UpdateResult::Staged, 0, \"Firmware staged; restarting\"))",
-        "updater.closeConnectionsOnUpdate(true);",
+        "updater.closeConnectionsOnUpdate(false);",
     ):
         require(update, setting)
     for setting in (
