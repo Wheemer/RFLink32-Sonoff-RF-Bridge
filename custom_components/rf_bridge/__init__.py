@@ -48,6 +48,7 @@ WS_RECONNECT_SECONDS = 5
 WS_HEARTBEAT_SECONDS = 15
 WS_CONNECTION_WAIT_SECONDS = 8
 FIRMWARE_UPDATE_CONNECTION_WAIT_SECONDS = 45
+FIRMWARE_UPDATE_QUIET_SECONDS = 15
 WS_MIN_COMMAND_TIMEOUT = 8
 WS_COMMAND_TIMEOUT_MARGIN = 10
 SENDRF_PREFIX = "10;signal;sendRF;"
@@ -233,6 +234,7 @@ class RFBridgeHub:
         self._tx_lock = asyncio.Lock()
         self._pending: dict[int, asyncio.Future[dict[str, Any]]] = {}
         self._request_id = 0
+        self._ota_quiet_until = 0.0
         self._learning_expiry_cancel: Callable[[], None] | None = None
 
     @property
@@ -312,6 +314,10 @@ class RFBridgeHub:
     async def _ws_loop(self) -> None:
         session = async_get_clientsession(self.hass)
         while True:
+            quiet_seconds = self._ota_quiet_until - asyncio.get_running_loop().time()
+            if quiet_seconds > 0:
+                await asyncio.sleep(quiet_seconds)
+                continue
             try:
                 async with session.ws_connect(
                     self.ws_url,
@@ -625,8 +631,12 @@ class RFBridgeHub:
         self.last_success = True
         self.async_write_diagnostics()
 
-        # Close the persistent Home Assistant socket before the OTA
-        # updater starts so it does not compete with signed flash writes.
+        # The firmware acknowledges first, then closes WebSocket allocations
+        # before it starts writing flash. Do not reconnect or probe during that
+        # small transfer window.
+        self._ota_quiet_until = (
+            asyncio.get_running_loop().time() + FIRMWARE_UPDATE_QUIET_SECONDS
+        )
         if self._ws is not None and not self._ws.closed:
             await self._ws.close()
 

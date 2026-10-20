@@ -41,6 +41,7 @@ DOWNLOAD_ROUTE = "/api/rf_bridge/firmware/{token}"
 DOWNLOAD_VIEW_KEY = "firmware_download_view"
 DOWNLOAD_VIEW_DATA_KEY = f"{DOMAIN}_{DOWNLOAD_VIEW_KEY}"
 FIRMWARE_UPDATE_VERIFY_SECONDS = 45
+FIRMWARE_UPDATE_SETTLE_SECONDS = 15
 VERSION_CHARACTERS = "0123456789.-_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
@@ -296,12 +297,15 @@ class RFBridgeFirmwareUpdate(UpdateEntity):
 
     async def _async_wait_for_version(self, version: str) -> bool:
         """Wait for and directly verify the bridge after a signed update."""
-        deadline = asyncio.get_running_loop().time() + FIRMWARE_UPDATE_VERIFY_SECONDS
-        next_probe = 0.0
-        while asyncio.get_running_loop().time() < deadline:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + FIRMWARE_UPDATE_VERIFY_SECONDS
+        # The bridge owns the API listener while writing flash. A status probe
+        # in this window recreates exactly the WebSocket pressure OTA avoids.
+        next_probe = loop.time() + FIRMWARE_UPDATE_SETTLE_SECONDS
+        while loop.time() < deadline:
             if self._hub.status.get(CONF_SW_VERSION) == version:
                 return True
-            now = asyncio.get_running_loop().time()
+            now = loop.time()
             if now >= next_probe:
                 next_probe = now + 2.0
                 try:

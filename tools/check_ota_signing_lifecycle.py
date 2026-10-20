@@ -34,6 +34,18 @@ def main() -> None:
         raise SystemExit("OTA handoff begins before the update acknowledgement is queued.")
     if "apiWebSocket.closeAll();" not in portal_source[acknowledgement:handoff + 128]:
         raise SystemExit("OTA handoff must release API WebSocket allocations before flashing.")
+    hub_source = Path("custom_components/rf_bridge/__init__.py").read_text(
+        encoding="utf-8"
+    )
+    update_source = Path("custom_components/rf_bridge/update.py").read_text(
+        encoding="utf-8"
+    )
+    if "FIRMWARE_UPDATE_QUIET_SECONDS = 15" not in hub_source:
+        raise SystemExit("Home Assistant must suspend WebSocket reconnects during OTA.")
+    if "self._ota_quiet_until" not in hub_source:
+        raise SystemExit("Home Assistant OTA quiet-window state is missing.")
+    if "FIRMWARE_UPDATE_SETTLE_SECONDS = 15" not in update_source:
+        raise SystemExit("Home Assistant must defer OTA status probes until flashing ends.")
     print("ota_signing_lifecycle=filesystem_and_websocket_handoff_verified")
 
 
