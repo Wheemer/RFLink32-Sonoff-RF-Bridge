@@ -338,6 +338,12 @@ namespace RFLink { namespace Portal {
 
             if(!wsSendJsonToClient(client, wsStatusDoc))
               Serial.println(F("WebSocket job result delivery failed"));
+            if(activeJob.type == WsJobType::Update) {
+              // The client has its acknowledgement. Release API WebSocket
+              // allocations before the ESP8266 updater allocates its buffers.
+              apiWebSocket.closeAll();
+              RFLink::UpdateSecurity::beginHandoff();
+            }
             activeJob.type = WsJobType::None;
             jobInProgress = false;
           }

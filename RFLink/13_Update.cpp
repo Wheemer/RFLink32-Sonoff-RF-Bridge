@@ -11,7 +11,7 @@
 
 namespace {
   constexpr size_t MAX_UPDATE_URL_BYTES = 384;
-  constexpr unsigned long UPDATE_START_DELAY_MS = 500;
+  constexpr unsigned long UPDATE_START_DELAY_MS = 1200;
   constexpr unsigned int HTTP_UPDATE_TIMEOUT_MS = 15000;
   constexpr uint32_t UPDATE_SIGNATURE_BYTES = 256;
   constexpr uint32_t OTA_STATE_MAGIC = 0x4F544131UL;
@@ -45,6 +45,7 @@ namespace {
   bool otaStateLoaded = false;
   unsigned long updateStartMillis = 0;
   bool updatePending = false;
+  bool updateHandoffReady = false;
   // SHA-256 of the PEM public key compiled into Updater_Signing.h. This is
   // public metadata used by Home Assistant to reject a mismatched OTA before
   // the bridge starts downloading it.
@@ -200,13 +201,6 @@ namespace {
 namespace RFLink::UpdateSecurity {
   void setup()
   {
-    loadPersistentState();
-    if(static_cast<UpdateResult>(otaState.result) == UpdateResult::Fetching) {
-      // A reset can occur after the attempt was recorded but before the
-      // updater returned. Do not present that stale state as an active fetch
-      // forever: it is an interrupted update attempt with no installed image.
-      persistState(UpdateResult::Failed, -2, "OTA update interrupted before result");
-    }
     // BearSSL allocates a 6.2 KB secondary stack for signature verification.
     // Reserve it before Wi-Fi and websocket activity fragment the ESP8285 heap.
     char error[sizeof(updateLastError)] = {};
@@ -214,6 +208,19 @@ namespace RFLink::UpdateSecurity {
       snprintf(updateLastError, sizeof(updateLastError), "%s", error);
       Serial.print(F("OTA signing setup failed: "));
       Serial.println(updateLastError);
+    }
+  }
+
+  void setupPersistentState()
+  {
+    // Config::setup() mounts LittleFS. Loading before that point permanently
+    // suppressed all later reads because loadPersistentState is idempotent.
+    loadPersistentState();
+    if(static_cast<UpdateResult>(otaState.result) == UpdateResult::Fetching) {
+      // A reset can occur after the attempt was recorded but before the
+      // updater returned. Do not present that stale state as an active fetch
+      // forever: it is an interrupted update attempt with no installed image.
+      persistState(UpdateResult::Failed, -2, "OTA update interrupted before result");
     }
   }
 
@@ -236,15 +243,25 @@ namespace RFLink::UpdateSecurity {
       error = "Could not persist OTA diagnostic state";
       return false;
     }
-    updateStartMillis = millis() + UPDATE_START_DELAY_MS;
-    updatePending = true;
+    updateHandoffReady = false;
+    updatePending = false;
     error = nullptr;
     return true;
   }
 
+  void beginHandoff()
+  {
+    // Called only after the scheduling acknowledgement has been queued to the
+    // API client. The portal now owns closing and cleaning up WebSockets.
+    updateStartMillis = millis() + UPDATE_START_DELAY_MS;
+    updateHandoffReady = true;
+    updatePending = true;
+  }
+
   void maintain()
   {
-    if(!updatePending || (long)(millis() - updateStartMillis) < 0)
+    if(!updatePending || !updateHandoffReady ||
+       (long)(millis() - updateStartMillis) < 0)
       return;
 
     updatePending = false;
@@ -316,7 +333,9 @@ namespace RFLink::UpdateSecurity {
 #else
 namespace RFLink::UpdateSecurity {
   void setup() {}
+  void setupPersistentState() {}
   bool schedule(const char *, const char *&error) { error = "Updates require ESP8266"; return false; }
+  void beginHandoff() {}
   void maintain() {}
   bool isPending() { return false; }
   const char *lastError() { return ""; }

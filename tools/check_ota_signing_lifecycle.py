@@ -19,14 +19,22 @@ def main() -> None:
     if "Update.installSignature(&context.hash, &context.verifier);" not in source:
         raise SystemExit("OTA update path does not use the prepared signing context.")
     if "updater.closeConnectionsOnUpdate(false);" not in source:
-        raise SystemExit("OTA must preserve the API connection until Home Assistant closes it.")
-    maintain_start = source.index("  void maintain()")
-    maintain_source = source[maintain_start:]
-    if "RFLink::Portal::closeWebSocketClients();" in maintain_source:
-        raise SystemExit("OTA maintain path must not force-close all WebSocket clients.")
-    if "RFLink::Portal::cleanupWebSocketClients();" in maintain_source:
-        raise SystemExit("OTA maintain path must not clean up WebSocket clients before the update hand-off.")
-    print("ota_signing_lifecycle=setup_initialized")
+        raise SystemExit("OTA must not tear down all TCP clients while fetching the image.")
+    if "void setupPersistentState()" not in source:
+        raise SystemExit("OTA state must be initialized after the persistent filesystem mounts.")
+    main_source = Path("RFLink/RFLink.cpp").read_text(encoding="utf-8")
+    if main_source.index("RFLink::Config::setup();") > main_source.index(
+        "RFLink::UpdateSecurity::setupPersistentState();"
+    ):
+        raise SystemExit("OTA persistent state is initialized before LittleFS is mounted.")
+    portal_source = Path("RFLink/12_Portal_ws.cpp").read_text(encoding="utf-8")
+    acknowledgement = portal_source.index('root[F("type")] = F("update_scheduled");')
+    handoff = portal_source.index("RFLink::UpdateSecurity::beginHandoff();")
+    if handoff <= acknowledgement:
+        raise SystemExit("OTA handoff begins before the update acknowledgement is queued.")
+    if "apiWebSocket.closeAll();" not in portal_source[acknowledgement:handoff + 128]:
+        raise SystemExit("OTA handoff must release API WebSocket allocations before flashing.")
+    print("ota_signing_lifecycle=filesystem_and_websocket_handoff_verified")
 
 
 if __name__ == "__main__":

@@ -187,6 +187,7 @@ namespace RFLink {
 #if defined(ESP32) || (ESP8266)
       RFLink::Config::setup();
 #endif
+      RFLink::UpdateSecurity::setupPersistentState();
       RFLink::Radio::setup();
       RFLink::Signal::setup();
 
