@@ -7,7 +7,7 @@ import sys
 
 source = Path(sys.argv[1]).read_text(encoding="utf-8")
 required = (
-    "static const char wifiSetupPage[] PROGMEM",
+    "static const char wifiSetupPageStable[] PROGMEM",
     "%WIFI_OPTIONS%",
     "id=\"wifi-form\"",
     "id=\"client_password\"",
@@ -16,7 +16,7 @@ required = (
     "id=\"toast\"",
     "fetch('/wifi'",
     "request->beginResponse(",
-    "strlen_P(wifiSetupPage)",
+    "strlen_P(wifiSetupPageStable)",
     "wifiSetupOptions",
 )
 
@@ -29,5 +29,8 @@ handler_end = source.index("void serveWifiSetupPost", handler_start)
 handler = source[handler_start:handler_end]
 if handler.index("request->send(staticResponse);") > handler.index("AsyncResponseStream"):
     raise SystemExit("Wi-Fi setup page must use the flash-backed response before any response stream")
+
+if "wifiSetupPageStable" not in handler:
+    raise SystemExit("Wi-Fi setup handler is not serving the stable portal markup")
 
 print("wifi_setup_page=complete_flash_backed")
