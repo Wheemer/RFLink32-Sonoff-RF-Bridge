@@ -30,9 +30,10 @@ jobs:
           python tools/check_api_only_transport.py
           python tools/check_firmware_download_view.py
           python tools/check_listener_topology.py
+          python tools/check_rf_bridge_websocket_reconnect.py
           python tools/check_sonoff_bridge_target.py
           python tools/check_wifi_setup_page.py RFLink/12_Portal.cpp
-          ruff check custom_components/rf_bridge tools/check_api_only_transport.py tools/check_firmware_download_view.py tools/check_listener_topology.py tools/check_sonoff_bridge_ota_layout.py tools/check_sonoff_bridge_target.py tools/package_sonoff_bridge_update.py tools/validate_ota_layout.py
+          ruff check custom_components/rf_bridge tools/check_api_only_transport.py tools/check_firmware_download_view.py tools/check_listener_topology.py tools/check_rf_bridge_websocket_reconnect.py tools/check_sonoff_bridge_ota_layout.py tools/check_sonoff_bridge_target.py tools/package_sonoff_bridge_update.py tools/validate_ota_layout.py
           python -m compileall -q custom_components/rf_bridge tools
           python - <<'PY'
           import json

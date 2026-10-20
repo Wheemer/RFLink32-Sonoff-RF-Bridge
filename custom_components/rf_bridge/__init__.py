@@ -45,6 +45,7 @@ WS_CONNECT_TIMEOUT = aiohttp.ClientTimeout(total=5)
 WS_COMMAND_TIMEOUT = 130
 WS_ACTION_TIMEOUT = 30
 WS_RECONNECT_SECONDS = 5
+WS_HEARTBEAT_SECONDS = 15
 WS_CONNECTION_WAIT_SECONDS = 8
 FIRMWARE_UPDATE_CONNECTION_WAIT_SECONDS = 45
 WS_MIN_COMMAND_TIMEOUT = 8
@@ -315,6 +316,7 @@ class RFBridgeHub:
                 async with session.ws_connect(
                     self.ws_url,
                     timeout=WS_CONNECT_TIMEOUT,
+                    heartbeat=WS_HEARTBEAT_SECONDS,
                 ) as ws:
                     self._ws = ws
                     async for msg in ws:
