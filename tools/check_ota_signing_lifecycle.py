@@ -18,8 +18,8 @@ def main() -> None:
         raise SystemExit("OTA signing context must persist for the firmware lifetime.")
     if "Update.installSignature(&context.hash, &context.verifier);" not in source:
         raise SystemExit("OTA update path does not use the prepared signing context.")
-    if "updater.closeConnectionsOnUpdate(false);" not in source:
-        raise SystemExit("OTA must not tear down all TCP clients while fetching the image.")
+    if "updater.closeConnectionsOnUpdate(true);" not in source:
+        raise SystemExit("OTA must close non-update connections before flash writes.")
     if "void setupPersistentState()" not in source:
         raise SystemExit("OTA state must be initialized after the persistent filesystem mounts.")
     main_source = Path("RFLink/RFLink.cpp").read_text(encoding="utf-8")

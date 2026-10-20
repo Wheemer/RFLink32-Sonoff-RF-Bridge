@@ -177,10 +177,10 @@ namespace {
 
     ESP8266HTTPUpdate updater(HTTP_UPDATE_TIMEOUT_MS);
     updater.rebootOnUpdate(false);
-    // Home Assistant closes its long-lived socket after the bridge returns
-    // update_scheduled. Do not globally tear down network clients here: the
-    // async API remains responsible for its own connection lifecycle.
-    updater.closeConnectionsOnUpdate(false);
+    // The scheduling acknowledgement and the Home Assistant quiet window have
+    // already released the API client. Let the updater close every remaining
+    // connection except its own download stream before flash writes begin.
+    updater.closeConnectionsOnUpdate(true);
     WiFiClient client;
     const t_httpUpdate_return result = updater.update(
       client, String(url), String(RFLINK_FIRMWARE_VERSION)
