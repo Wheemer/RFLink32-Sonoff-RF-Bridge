@@ -1,6 +1,9 @@
 <div align="center">
 
-<img src="doc/sonoff_22_front.png" alt="Modified Sonoff RF Bridge" width="220">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="custom_components/rf_bridge/brand/dark_logo.png">
+  <img src="custom_components/rf_bridge/brand/logo.png" alt="RF Bridge" width="360">
+</picture>
 
 # RF Bridge
 
