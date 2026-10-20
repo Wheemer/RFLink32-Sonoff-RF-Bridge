@@ -6,7 +6,7 @@ from pathlib import Path
 source = Path(sys.argv[1]).read_text(encoding="utf-8")
 required = (
     "static const char wifiSetupPageStable[] PROGMEM",
-    "%WIFI_OPTIONS%",
+    "Scanning nearby networks...",
     "id=\"wifi-form\"",
     "id=\"client_password\"",
     "id=\"toggle-password\"",
@@ -15,7 +15,8 @@ required = (
     "fetch('/wifi'",
     "request->beginResponse(",
     "strlen_P(wifiSetupPageStable)",
-    "wifiSetupOptions",
+    "fetch('/wifi/networks'",
+    "serveWifiSetupNetworks",
     "background:#e4f4f9",
     "color:#183b4a",
     "border-bottom:3px solid #1596c8",
@@ -41,6 +42,8 @@ if "wifiSetupPageStable" not in handler:
 active_start = source.index("static const char wifiSetupPageStable[] PROGMEM")
 active_end = source.index(")HTML\";", active_start)
 active_page = source[active_start:active_end]
+if "strlen_P(wifiSetupPageStable),\n                  wifiSetupOptions" in handler:
+    raise SystemExit("Wi-Fi setup page must not use the AsyncWebServer template processor")
 desktop_styles = active_page.split("@media", 1)[0]
 if desktop_styles.count(".bar{") != 1:
     raise SystemExit("Wi-Fi setup page must have one unambiguous header style.")
