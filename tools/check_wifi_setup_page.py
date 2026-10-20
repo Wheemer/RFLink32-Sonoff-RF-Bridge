@@ -1,9 +1,7 @@
-#!/usr/bin/env python3
 """Guard the AP Wi-Fi setup page against incomplete response regressions."""
 
-from pathlib import Path
 import sys
-
+from pathlib import Path
 
 source = Path(sys.argv[1]).read_text(encoding="utf-8")
 required = (
@@ -18,6 +16,10 @@ required = (
     "request->beginResponse(",
     "strlen_P(wifiSetupPageStable)",
     "wifiSetupOptions",
+    "background:#e4f4f9",
+    "color:#183b4a",
+    "border-bottom:3px solid #1596c8",
+    "@media(max-width:520px)",
 )
 
 missing = [fragment for fragment in required if fragment not in source]
@@ -32,5 +34,12 @@ if handler.index("request->send(staticResponse);") > handler.index("AsyncRespons
 
 if "wifiSetupPageStable" not in handler:
     raise SystemExit("Wi-Fi setup handler is not serving the stable portal markup")
+
+active_start = source.index("static const char wifiSetupPageStable[] PROGMEM")
+active_end = source.index(")HTML\";", active_start)
+active_page = source[active_start:active_end]
+desktop_styles = active_page.split("@media", 1)[0]
+if desktop_styles.count(".bar{") != 1:
+    raise SystemExit("Wi-Fi setup page must have one unambiguous header style.")
 
 print("wifi_setup_page=complete_flash_backed")
