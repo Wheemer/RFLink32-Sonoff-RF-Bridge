@@ -30,7 +30,7 @@ Then erase and write the release binary:
 
 ```shell
 python -m esptool --baud 460800 erase_flash
-python -m esptool --baud 460800 write_flash -fs 1MB -fm dout 0x0 RFBridge-<version>-local-recovery.bin
+python -m esptool --baud 460800 write_flash -fs 1MB -fm dout 0x0 RFBridge-<version>-full.bin
 ```
 
 ![UART wiring for the first local flash](sonoff_22_serial.png)

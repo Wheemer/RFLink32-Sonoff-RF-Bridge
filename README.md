@@ -66,7 +66,7 @@ This build requires the R2 v2.2 direct-hack radio modification. The full guide i
 
 ### 2. Flash the release image locally
 
-Download `RFBridge-<version>-local-recovery.bin` from the [latest release](https://github.com/Wheemer/RFLink32-Sonoff-RF-Bridge/releases/latest). The first install is performed over UART; follow the exact `esptool` backup, erase, and flash steps in the [hardware guide](doc/sonoff_rf_bridge.md#2-perform-the-first-local-flash).
+Download `RFBridge-<version>-full.bin` from the [latest release](https://github.com/Wheemer/RFLink32-Sonoff-RF-Bridge/releases/latest). This is the complete production firmware image. The first install is performed over UART; follow the exact `esptool` backup, erase, and flash steps in the [hardware guide](doc/sonoff_rf_bridge.md#2-perform-the-first-local-flash).
 
 ### 3. Connect the bridge to Wi-Fi
 

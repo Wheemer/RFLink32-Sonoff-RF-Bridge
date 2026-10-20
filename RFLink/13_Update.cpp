@@ -176,10 +176,11 @@ namespace {
 
     ESP8266HTTPUpdate updater(HTTP_UPDATE_TIMEOUT_MS);
     updater.rebootOnUpdate(false);
-    // Home Assistant closes its long-lived socket before scheduling OTA. Do
-    // not also globally tear down TCP/UDP from inside the updater: that can
-    // disrupt the async API while the bridge is writing the staged image.
-    updater.closeConnectionsOnUpdate(false);
+    // Keep only the updater's download socket once the HTTP response has
+    // arrived. This is ESP8266HTTPUpdate's safe default and releases the
+    // memory previously held by API clients before flash-write buffers are
+    // allocated.
+    updater.closeConnectionsOnUpdate(true);
     WiFiClient client;
     const t_httpUpdate_return result = updater.update(
       client, String(url), String(RFLINK_FIRMWARE_VERSION)
@@ -200,6 +201,13 @@ namespace {
 namespace RFLink::UpdateSecurity {
   void setup()
   {
+    loadPersistentState();
+    if(static_cast<UpdateResult>(otaState.result) == UpdateResult::Fetching) {
+      // A reset can occur after the attempt was recorded but before the
+      // updater returned. Do not present that stale state as an active fetch
+      // forever: it is an interrupted update attempt with no installed image.
+      persistState(UpdateResult::Failed, -2, "OTA update interrupted before result");
+    }
     // BearSSL allocates a 6.2 KB secondary stack for signature verification.
     // Reserve it before Wi-Fi and websocket activity fragment the ESP8285 heap.
     char error[sizeof(updateLastError)] = {};
@@ -252,6 +260,14 @@ namespace RFLink::UpdateSecurity {
     RFLink::Signal::RawSignal.readyForDecoder = false;
     RFLink::Signal::RawSignal.Number = 0;
     RFLink::Signal::RawSignal.Time = 0;
+    // The update acknowledgement has already reached Home Assistant. Drain
+    // the persistent API client before allocating the signed updater's HTTP
+    // buffers so the ESP8285 never has to hold both paths at once.
+    RFLink::Portal::closeWebSocketClients();
+    RFLink::Portal::cleanupWebSocketClients();
+    delay(100);
+    yield();
+    ESP.wdtFeed();
     int32_t errorCode = -1;
     if(!fetchAndApplyUpdate(pendingUpdateUrl, updateLastError, sizeof(updateLastError), errorCode)) {
       persistState(UpdateResult::Failed, errorCode, updateLastError);

@@ -68,9 +68,9 @@ jobs:
           python tools/verify_signed_ota_artifact.py \
             release/firmware.bin.gz.signed \
             --signing-header RFLink/Updater_Signing.h
-          recovery_image="release/RFBridge-${VERSION}-local-recovery.bin"
-          cp .pio/build/sonoff_bridge/firmware.bin "$recovery_image"
-          sha256sum "$recovery_image" > "$recovery_image.sha256"
+          full_image="release/RFBridge-${VERSION}-full.bin"
+          cp .pio/build/sonoff_bridge/firmware.bin "$full_image"
+          sha256sum "$full_image" > "$full_image.sha256"
 
       - name: Publish GitHub release
         env:
@@ -81,15 +81,15 @@ jobs:
             gh release upload "$GITHUB_REF_NAME" \
               release/firmware.bin.gz.signed \
               release/manifest.json \
-              release/RFBridge-"${GITHUB_REF_NAME#v}"-local-recovery.bin \
-              release/RFBridge-"${GITHUB_REF_NAME#v}"-local-recovery.bin.sha256 \
+              release/RFBridge-"${GITHUB_REF_NAME#v}"-full.bin \
+              release/RFBridge-"${GITHUB_REF_NAME#v}"-full.bin.sha256 \
               --clobber
           else
             gh release create "$GITHUB_REF_NAME" \
               release/firmware.bin.gz.signed \
               release/manifest.json \
-              release/RFBridge-"${GITHUB_REF_NAME#v}"-local-recovery.bin \
-              release/RFBridge-"${GITHUB_REF_NAME#v}"-local-recovery.bin.sha256 \
+              release/RFBridge-"${GITHUB_REF_NAME#v}"-full.bin \
+              release/RFBridge-"${GITHUB_REF_NAME#v}"-full.bin.sha256 \
               --target "$target" \
               --generate-notes \
               --title "RF Bridge ${GITHUB_REF_NAME}"

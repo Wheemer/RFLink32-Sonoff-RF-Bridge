@@ -9,13 +9,10 @@ SOURCE = Path("RFLink/13_Update.cpp")
 
 def main() -> None:
     source = SOURCE.read_text(encoding="utf-8")
-    setup = """void setup()
-  {
-    // BearSSL allocates a 6.2 KB secondary stack for signature verification.
-    // Reserve it before Wi-Fi and websocket activity fragment the ESP8285 heap.
-    char error[sizeof(updateLastError)] = {};
-    if(!initialiseSigningVerifier(error, sizeof(error))) {"""
-    if setup not in source:
+    setup_start = """void setup()
+  {"""
+    verifier_initialization = """if(!initialiseSigningVerifier(error, sizeof(error))) {"""
+    if setup_start not in source or verifier_initialization not in source:
         raise SystemExit("OTA signing verifier must be initialized during firmware setup.")
     if "static SigningContext context;" not in source:
         raise SystemExit("OTA signing context must persist for the firmware lifetime.")
