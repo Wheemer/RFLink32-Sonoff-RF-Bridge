@@ -1,11 +1,11 @@
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="custom_components/rf_bridge/brand/dark_logo.png">
-  <img src="custom_components/rf_bridge/brand/logo.png" alt="RF Bridge" width="360">
-</picture>
-
-# RF Bridge
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="custom_components/rf_bridge/brand/dark_logo.png">
+    <img src="custom_components/rf_bridge/brand/logo.png" alt="RF Bridge" width="440">
+  </picture>
+</p>
 
 ### Local 433 MHz control for a modified Sonoff RF Bridge and Home Assistant
 
