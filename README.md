@@ -2,7 +2,7 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Wheemer/RFLink32-Sonoff-RF-Bridge/8af39697017aaa58ed33f516bc18c8435964e06c/custom_components/rf_bridge/brand/dark_logo.png">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Wheemer/RFLink32-Sonoff-RF-Bridge/7b471a1/custom_components/rf_bridge/brand/dark_logo.png">
     <img src="https://raw.githubusercontent.com/Wheemer/RFLink32-Sonoff-RF-Bridge/aebac12/custom_components/rf_bridge/brand/logo.png" alt="RF Bridge" width="440">
   </picture>
 </p>
