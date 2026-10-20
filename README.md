@@ -1,10 +1,8 @@
 <div align="center">
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Wheemer/RFLink32-Sonoff-RF-Bridge/3abc583/custom_components/rf_bridge/brand/dark_header_logo.png">
-    <img src="https://raw.githubusercontent.com/Wheemer/RFLink32-Sonoff-RF-Bridge/a5d08e3/custom_components/rf_bridge/brand/header_logo.png" alt="RF Bridge" width="440">
-  </picture>
+  <img src="https://raw.githubusercontent.com/Wheemer/RFLink32-Sonoff-RF-Bridge/3abc583/custom_components/rf_bridge/brand/dark_header_logo.png#gh-dark-mode-only" alt="RF Bridge" width="440">
+  <img src="https://raw.githubusercontent.com/Wheemer/RFLink32-Sonoff-RF-Bridge/a5d08e3/custom_components/rf_bridge/brand/header_logo.png#gh-light-mode-only" alt="RF Bridge" width="440">
 </p>
 
 ### Local 433 MHz control for a modified Sonoff RF Bridge and Home Assistant
