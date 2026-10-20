@@ -295,6 +295,23 @@ class RFBridgeFirmwareUpdate(UpdateEntity):
                 _LOGGER.debug("Could not fetch RF Bridge firmware manifest: %s", err)
             self.async_write_ha_state()
 
+    def _set_install_progress(self, percentage: int) -> None:
+        """Publish a verified OTA phase through Home Assistant's update UI."""
+        if (
+            getattr(self, "_attr_update_percentage", None) == percentage
+            and getattr(self, "_attr_in_progress", False)
+        ):
+            return
+        self._attr_in_progress = True
+        self._attr_update_percentage = percentage
+        self.async_write_ha_state()
+
+    def _clear_install_progress(self) -> None:
+        """Clear the transient OTA phase once the install has ended."""
+        self._attr_in_progress = False
+        self._attr_update_percentage = None
+        self.async_write_ha_state()
+
     async def _async_wait_for_version(self, version: str) -> bool:
         """Wait for and directly verify the bridge after a signed update."""
         loop = asyncio.get_running_loop()
@@ -304,18 +321,26 @@ class RFBridgeFirmwareUpdate(UpdateEntity):
         next_probe = loop.time() + FIRMWARE_UPDATE_SETTLE_SECONDS
         while loop.time() < deadline:
             if self._hub.status.get(CONF_SW_VERSION) == version:
+                self._set_install_progress(100)
                 return True
             now = loop.time()
             if now >= next_probe:
                 next_probe = now + 2.0
+                self._set_install_progress(50)
                 try:
                     status = await self._hub.async_probe_status()
                     if status.get(CONF_SW_VERSION) == version:
+                        self._set_install_progress(100)
                         return True
+                    if status.get("update_last_result") == "staged":
+                        self._set_install_progress(85)
                 except (TimeoutError, aiohttp.ClientError, ValueError) as err:
                     _LOGGER.debug("RF Bridge has not returned from OTA yet: %s", err)
             await asyncio.sleep(1)
-        return self._hub.status.get(CONF_SW_VERSION) == version
+        verified = self._hub.status.get(CONF_SW_VERSION) == version
+        if verified:
+            self._set_install_progress(100)
+        return verified
 
     async def async_install(
         self, version: str | None, backup: bool, **kwargs: Any
@@ -323,88 +348,91 @@ class RFBridgeFirmwareUpdate(UpdateEntity):
         """Stage a release locally, then schedule its signed bridge fetch."""
         del backup, kwargs
         async with self._install_lock:
-            release = await _async_fetch_release(self.hass)
-            if version is not None and version != release.version:
-                raise HomeAssistantError("Requested RF Bridge firmware version is unavailable")
-            device_key_id = self._hub.status.get("update_signing_key_id")
-            if not isinstance(device_key_id, str) or not device_key_id:
-                raise HomeAssistantError(
-                    "RF Bridge firmware does not report its OTA signing key; "
-                    "a locally flashed OTA-capable firmware is required before OTA updates"
-                )
-            if device_key_id.lower() != release.signing_key_id:
-                raise HomeAssistantError(
-                    "RF Bridge OTA signing key does not match this release; "
-                    "the update was not started"
-                )
-            artifact = await _async_stage_release(self.hass, self._hub.entry, release)
-            view = _get_download_view(self.hass)
-            token = view.add(artifact)
-            disconnected_after_schedule = False
+            self._set_install_progress(0)
             try:
-                await self._hub.async_schedule_firmware_update(
-                    _local_download_url(self.hass, token)
-                )
-            except aiohttp.ClientError as err:
-                if "WebSocket disconnected" not in str(err):
+                release = await _async_fetch_release(self.hass)
+                if version is not None and version != release.version:
+                    raise HomeAssistantError("Requested RF Bridge firmware version is unavailable")
+                device_key_id = self._hub.status.get("update_signing_key_id")
+                if not isinstance(device_key_id, str) or not device_key_id:
+                    raise HomeAssistantError(
+                        "RF Bridge firmware does not report its OTA signing key; "
+                        "a locally flashed OTA-capable firmware is required before OTA updates"
+                    )
+                if device_key_id.lower() != release.signing_key_id:
+                    raise HomeAssistantError(
+                        "RF Bridge OTA signing key does not match this release; "
+                        "the update was not started"
+                    )
+                self._set_install_progress(10)
+                artifact = await _async_stage_release(self.hass, self._hub.entry, release)
+                self._set_install_progress(25)
+                view = _get_download_view(self.hass)
+                token = view.add(artifact)
+                disconnected_after_schedule = False
+                try:
+                    await self._hub.async_schedule_firmware_update(
+                        _local_download_url(self.hass, token)
+                    )
+                except aiohttp.ClientError as err:
+                    if "WebSocket disconnected" not in str(err):
+                        view.discard(token)
+                        raise
+                    disconnected_after_schedule = True
+                    _LOGGER.debug(
+                        "RF Bridge disconnected while starting firmware update; "
+                        "waiting for version %s",
+                        release.version,
+                    )
+                except Exception:
                     view.discard(token)
                     raise
-                # The bridge starts the fetch immediately after accepting the
-                # request, which legitimately closes its WebSocket on reboot.
-                # Keep the staged URL alive through that transition.
-                disconnected_after_schedule = True
-                _LOGGER.debug(
-                    "RF Bridge disconnected while starting firmware update; "
-                    "waiting for version %s",
-                    release.version,
-                )
-            except Exception:
-                view.discard(token)
-                raise
-
-            try:
-                verified = await self._async_wait_for_version(release.version)
-            finally:
-                await self._hub.async_resume_after_firmware_update()
-            if not verified:
-                update_detail: list[str] = []
+                self._set_install_progress(35)
                 try:
-                    status = await self._hub.async_probe_status()
-                    result = status.get("update_last_result")
-                    if isinstance(result, str) and result:
-                        update_detail.append(f"bridge result={result}")
-                    error_code = status.get("update_last_error_code")
-                    if isinstance(error_code, int) and error_code:
-                        update_detail.append(f"error_code={error_code}")
-                    reported_error = status.get("update_error")
-                    if isinstance(reported_error, str) and reported_error:
-                        update_detail.append(reported_error)
-                except (TimeoutError, aiohttp.ClientError, HomeAssistantError, ValueError) as err:
-                    _LOGGER.debug(
-                        "Could not obtain RF Bridge update failure detail: %s", err
+                    verified = await self._async_wait_for_version(release.version)
+                finally:
+                    await self._hub.async_resume_after_firmware_update()
+                if not verified:
+                    update_detail: list[str] = []
+                    try:
+                        status = await self._hub.async_probe_status()
+                        result = status.get("update_last_result")
+                        if isinstance(result, str) and result:
+                            update_detail.append(f"bridge result={result}")
+                        error_code = status.get("update_last_error_code")
+                        if isinstance(error_code, int) and error_code:
+                            update_detail.append(f"error_code={error_code}")
+                        reported_error = status.get("update_error")
+                        if isinstance(reported_error, str) and reported_error:
+                            update_detail.append(reported_error)
+                    except (TimeoutError, aiohttp.ClientError, HomeAssistantError, ValueError) as err:
+                        _LOGGER.debug(
+                            "Could not obtain RF Bridge update failure detail: %s", err
+                        )
+                    downloaded = view.downloaded(token)
+                    request_audit = view.audit(token)
+                    if request_audit is not None:
+                        _LOGGER.debug(
+                            "RF Bridge staged firmware request audit: %s", request_audit
+                        )
+                    view.discard(token)
+                    reason = (
+                        "after scheduling the update"
+                        if disconnected_after_schedule
+                        else "while waiting for the update"
                     )
-                downloaded = view.downloaded(token)
-                request_audit = view.audit(token)
-                if request_audit is not None:
-                    _LOGGER.debug(
-                        "RF Bridge staged firmware request audit: %s", request_audit
+                    if not downloaded:
+                        reason = f"{reason}; the bridge never requested the staged artifact"
+                    if update_detail:
+                        reason = f"{reason}: {'; '.join(update_detail)}"
+                    raise HomeAssistantError(
+                        f"RF Bridge did not report firmware {release.version} {reason}"
                     )
+                self._release = release
+                self.async_write_ha_state()
                 view.discard(token)
-                reason = (
-                    "after scheduling the update"
-                    if disconnected_after_schedule
-                    else "while waiting for the update"
-                )
-                if not downloaded:
-                    reason = f"{reason}; the bridge never requested the staged artifact"
-                if update_detail:
-                    reason = f"{reason}: {'; '.join(update_detail)}"
-                raise HomeAssistantError(
-                    f"RF Bridge did not report firmware {release.version} {reason}"
-                )
-            self._release = release
-            self.async_write_ha_state()
-            view.discard(token)
+            finally:
+                self._clear_install_progress()
 
 
 async def async_setup_entry(

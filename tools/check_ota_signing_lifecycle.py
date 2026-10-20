@@ -79,6 +79,17 @@ def main() -> None:
         raise SystemExit("Home Assistant must wait for the verified firmware version.")
     if "self._hub.async_resume_after_firmware_update()" not in update_source:
         raise SystemExit("Home Assistant must resume its socket after OTA verification.")
+    for required in (
+        "def _set_install_progress(self, percentage: int)",
+        "self._attr_in_progress = True",
+        "self._attr_update_percentage = percentage",
+        "self._set_install_progress(35)",
+        "self._set_install_progress(50)",
+        "self._set_install_progress(100)",
+        "self._clear_install_progress()",
+    ):
+        if required not in update_source:
+            raise SystemExit(f"Home Assistant OTA progress reporting is incomplete: {required}")
     print("ota_signing_lifecycle=filesystem_and_api_handoff_verified")
 
 
