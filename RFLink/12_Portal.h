@@ -18,6 +18,9 @@ namespace RFLink {
         void init();
         void start();
         void stop();
+        // Release the API listener and its client allocations before a
+        // memory-constrained ESP8266 OTA download starts.
+        void prepareForUpdate();
         // Called after the station has an address. The API listener must be
         // created from the main loop, never directly from a Wi-Fi callback.
         void notifyNetworkReady();

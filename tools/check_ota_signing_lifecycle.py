@@ -34,6 +34,25 @@ def main() -> None:
         raise SystemExit("OTA handoff begins before the update acknowledgement is queued.")
     if "apiWebSocket.closeAll();" not in portal_source[acknowledgement:handoff + 128]:
         raise SystemExit("OTA handoff must release API WebSocket allocations before flashing.")
+    portal_header = Path("RFLink/12_Portal.h").read_text(encoding="utf-8")
+    portal_runtime = Path("RFLink/12_Portal.cpp").read_text(encoding="utf-8")
+    if "void prepareForUpdate();" not in portal_header:
+        raise SystemExit("OTA handoff must expose a main-loop API shutdown path.")
+    prepare_start = portal_runtime.index("void prepareForUpdate()")
+    prepare_end = portal_runtime.index("void notifyNetworkReady()", prepare_start)
+    prepare = portal_runtime[prepare_start:prepare_end]
+    for required in (
+        "stopSetupServer();",
+        "closeWebSocketClients();",
+        "cleanupWebSocketClients();",
+        "apiServer.end();",
+    ):
+        if required not in prepare:
+            raise SystemExit("OTA handoff must release all API-server allocations before download.")
+    update_handoff = source.index("void maintain()")
+    update_call = source.index("fetchAndApplyUpdate(", update_handoff)
+    if "RFLink::Portal::prepareForUpdate();" not in source[update_handoff:update_call]:
+        raise SystemExit("OTA update must stop the API server before constructing its HTTP client.")
     hub_source = Path("custom_components/rf_bridge/__init__.py").read_text(
         encoding="utf-8"
     )
@@ -46,7 +65,7 @@ def main() -> None:
         raise SystemExit("Home Assistant OTA quiet-window state is missing.")
     if "FIRMWARE_UPDATE_SETTLE_SECONDS = 15" not in update_source:
         raise SystemExit("Home Assistant must defer OTA status probes until flashing ends.")
-    print("ota_signing_lifecycle=filesystem_and_websocket_handoff_verified")
+    print("ota_signing_lifecycle=filesystem_and_api_handoff_verified")
 
 
 if __name__ == "__main__":

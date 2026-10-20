@@ -196,6 +196,16 @@ namespace {
     );
     return false;
   }
+
+  void updatePhaseDetail(char *detail, size_t detailSize, const char *phase)
+  {
+    snprintf(
+      detail, detailSize, "%s; heap=%u; max_block=%u",
+      phase,
+      ESP.getFreeHeap(),
+      ESP.getMaxFreeBlockSize()
+    );
+  }
 }
 
 namespace RFLink::UpdateSecurity {
@@ -220,7 +230,9 @@ namespace RFLink::UpdateSecurity {
       // A reset can occur after the attempt was recorded but before the
       // updater returned. Do not present that stale state as an active fetch
       // forever: it is an interrupted update attempt with no installed image.
-      persistState(UpdateResult::Failed, -2, "OTA update interrupted before result");
+      char detail[sizeof(updateLastError)] = {};
+      snprintf(detail, sizeof(detail), "OTA interrupted: %.72s", otaState.detail);
+      persistState(UpdateResult::Failed, -2, detail);
     }
   }
 
@@ -265,7 +277,9 @@ namespace RFLink::UpdateSecurity {
       return;
 
     updatePending = false;
-    if(!persistState(UpdateResult::Fetching, 0, "")) {
+    char phaseDetail[sizeof(updateLastError)] = {};
+    updatePhaseDetail(phaseDetail, sizeof(phaseDetail), "OTA handoff starting");
+    if(!persistState(UpdateResult::Fetching, 0, phaseDetail)) {
       snprintf(updateLastError, sizeof(updateLastError), "Could not persist OTA fetch state");
       Serial.println(updateLastError);
       return;
@@ -276,6 +290,14 @@ namespace RFLink::UpdateSecurity {
     RFLink::Signal::RawSignal.readyForDecoder = false;
     RFLink::Signal::RawSignal.Number = 0;
     RFLink::Signal::RawSignal.Time = 0;
+    RFLink::Portal::prepareForUpdate();
+    yield();
+    updatePhaseDetail(phaseDetail, sizeof(phaseDetail), "OTA HTTP updater starting");
+    if(!persistState(UpdateResult::Fetching, 0, phaseDetail)) {
+      snprintf(updateLastError, sizeof(updateLastError), "Could not persist OTA updater state");
+      Serial.println(updateLastError);
+      return;
+    }
     int32_t errorCode = -1;
     if(!fetchAndApplyUpdate(pendingUpdateUrl, updateLastError, sizeof(updateLastError), errorCode)) {
       persistState(UpdateResult::Failed, errorCode, updateLastError);

@@ -469,6 +469,21 @@ namespace RFLink { namespace Portal {
           }
         }
 
+        void prepareForUpdate() {
+          // OTA uses an outbound HTTP connection. Keeping the asynchronous
+          // API listener alive adds TCP and WebSocket allocations precisely
+          // when the ESP8285 has the least free heap.
+          stopSetupServer();
+          closeWebSocketClients();
+          cleanupWebSocketClients();
+          apiServerRestartPending = false;
+          apiServerRetryAt = 0;
+          if(apiServerStarted) {
+            apiServer.end();
+            apiServerStarted = false;
+          }
+        }
+
         void notifyNetworkReady() {
           // ESPAsyncWebServer owns TCP state. Do not call end()/begin() from
           // the ESP8266 Wi-Fi event callback; defer a needed start to the
