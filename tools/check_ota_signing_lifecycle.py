@@ -1,4 +1,4 @@
-"""Reject firmware that initializes its OTA verifier only after an update is requested."""
+"""Verify the native ESP8266 signed-OTA and API-handoff contracts."""
 
 from __future__ import annotations
 
@@ -9,15 +9,17 @@ SOURCE = Path("RFLink/13_Update.cpp")
 
 def main() -> None:
     source = SOURCE.read_text(encoding="utf-8")
-    setup_start = """void setup()
-  {"""
-    verifier_initialization = """if(!initialiseSigningVerifier(error, sizeof(error))) {"""
-    if setup_start not in source or verifier_initialization not in source:
-        raise SystemExit("OTA signing verifier must be initialized during firmware setup.")
-    if "static SigningContext context;" not in source:
-        raise SystemExit("OTA signing context must persist for the firmware lifetime.")
-    if "Update.installSignature(&context.hash, &context.verifier);" not in source:
-        raise SystemExit("OTA update path does not use the prepared signing context.")
+    platformio = Path("platformio.ini").read_text(encoding="utf-8")
+    if "-I RFLink" not in platformio:
+        raise SystemExit(
+            "Updater_Signing.h must be visible while the ESP8266 framework compiles."
+        )
+    if "SigningContext" in source or "Update.installSignature(" in source:
+        raise SystemExit(
+            "OTA must use the ESP8266 core signer, not a parallel application signer."
+        )
+    if '#include "Updater_Signing.h"' in source:
+        raise SystemExit("The application must not instantiate the core signing header itself.")
     if "updater.closeConnectionsOnUpdate(true);" not in source:
         raise SystemExit("OTA must close non-update connections before flash writes.")
     if "void setupPersistentState()" not in source:
