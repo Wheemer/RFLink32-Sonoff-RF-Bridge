@@ -53,11 +53,14 @@ namespace RFLink { namespace Portal {
           if(!checkPageAuthentication(request))
             return;
 
-          StaticJsonDocument<768> document;
-          JsonObject root = document.to<JsonObject>();
-          JsonArray networks = root.createNestedArray(F("networks"));
+          AsyncResponseStream *response = request->beginResponseStream(
+            F("application/json; charset=utf-8")
+          );
+          response->addHeader(F("Cache-Control"), F("no-store"));
+          response->print(F("{\"networks\":["));
 
           const int count = RFLink::Wifi::getCachedWifiNetworkCount();
+          bool first = true;
           for(int index = 0; index < count; index++) {
             String ssid;
             int32_t rssi;
@@ -65,20 +68,18 @@ namespace RFLink { namespace Portal {
             if(!RFLink::Wifi::getCachedWifiNetwork(index, ssid, rssi, secure) || ssid.length() == 0)
               continue;
 
-            JsonObject network = networks.createNestedObject();
+            StaticJsonDocument<192> network;
             network[F("ssid")] = ssid;
             network[F("rssi")] = rssi;
+            if(network.overflowed())
+              continue;
+            if(!first)
+              response->print(',');
+            serializeJson(network, *response);
+            first = false;
           }
-
-          if(document.overflowed()) {
-            request->send(500, F("application/json"), F("{\"error\":\"WiFi network list overflow\"}"));
-            return;
-          }
-
-          String payload;
-          payload.reserve(512);
-          serializeJson(document, payload);
-          request->send(200, F("application/json; charset=utf-8"), payload);
+          response->print(F("]}"));
+          request->send(response);
         }
 
         bool pushConfigAndReply(AsyncWebServerRequest *request, JsonObject root, const __FlashStringHelper *page) {

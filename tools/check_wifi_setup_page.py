@@ -38,7 +38,7 @@ required_source = (
     'wifiSetupPageGzipLength',
     'addHeader(F("Content-Encoding"), F("gzip"))',
     'F("application/json; charset=utf-8")',
-    'createNestedArray(F("networks"))',
+    'beginResponseStream(',
 )
 missing = [fragment for fragment in required_source if fragment not in source]
 if missing:
@@ -53,7 +53,7 @@ if "payload.selected" in page or 'root[F("selected")]' in source:
 if "select.options.length === 0" not in page:
     raise SystemExit("Wi-Fi portal must preselect the strongest fresh scan result")
 
-if "wifiSetupPageStable" in source or "wifiSetupOptions" in source or "AsyncResponseStream" in source:
+if "wifiSetupPageStable" in source or "wifiSetupOptions" in source:
     raise SystemExit("legacy Wi-Fi portal renderer remains active")
 
 handler = source[source.index("void serveWifiSetupPage"):source.index("void serveWifiSetupPost")]
@@ -61,12 +61,15 @@ if "wifiSetupPageGzipLength," in handler:
     raise SystemExit("Wi-Fi portal response must not attach a template processor")
 
 required_wifi = (
-    "const int MAX_WIFI_SCAN_CACHE = 4;",
-    "if(ssid == cachedWifiSsids[j])",
-    "cachedWifiNetworkCount--;",
+    "new(std::nothrow) CachedWifiNetwork[count]",
+    "if(ssid == cachedWifiNetworks[j].ssid)",
+    "clearWifiScanCache();",
 )
 missing = [fragment for fragment in required_wifi if fragment not in wifi]
 if missing:
     raise SystemExit("Wi-Fi scan cache is incomplete: " + ", ".join(missing))
+
+if "MAX_WIFI_SCAN_CACHE" in wifi:
+    raise SystemExit("Wi-Fi scan cache must not impose an arbitrary network limit")
 
 print("wifi_setup_page=fixed_gzip_asset")

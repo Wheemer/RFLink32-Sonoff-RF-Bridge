@@ -2,6 +2,7 @@
 
 #include "RFLink.h"
 #include <Arduino.h>
+#include <new>
 
 #include "10_Wifi.h"
 #include "2_Signal.h"
@@ -66,11 +67,19 @@ namespace RFLink { namespace Wifi {
         volatile bool stationDisconnectedPending = false;
         unsigned long setupAccessPointClientConnectedAt = 0;
         const unsigned long SETUP_AP_SHUTDOWN_GRACE_MS = 1000;
-        const int MAX_WIFI_SCAN_CACHE = 4;
-        String cachedWifiSsids[MAX_WIFI_SCAN_CACHE];
-        int32_t cachedWifiRssis[MAX_WIFI_SCAN_CACHE];
-        bool cachedWifiSecure[MAX_WIFI_SCAN_CACHE];
+        struct CachedWifiNetwork {
+          String ssid;
+          int32_t rssi;
+          bool secure;
+        };
+        CachedWifiNetwork *cachedWifiNetworks = nullptr;
         int cachedWifiNetworkCount = 0;
+
+        void clearWifiScanCache() {
+          delete[] cachedWifiNetworks;
+          cachedWifiNetworks = nullptr;
+          cachedWifiNetworkCount = 0;
+        }
 
         void startMdnsDiscovery();
 
@@ -309,7 +318,7 @@ namespace RFLink { namespace Wifi {
         }
 
         void refreshWifiScanCache() {
-          cachedWifiNetworkCount = 0;
+          clearWifiScanCache();
           Serial.println(F("Scanning WiFi networks before setup AP service"));
           WiFiMode_t previousMode = WiFi.getMode();
           if((previousMode & WIFI_STA) == 0) {
@@ -323,6 +332,13 @@ namespace RFLink { namespace Wifi {
             WiFi.mode(previousMode);
             return;
           }
+          cachedWifiNetworks = new(std::nothrow) CachedWifiNetwork[count];
+          if(cachedWifiNetworks == nullptr && count > 0) {
+            Serial.println(F("WiFi scan cache allocation failed"));
+            WiFi.scanDelete();
+            WiFi.mode(previousMode);
+            return;
+          }
           for(int i = 0; i < count; i++) {
             String ssid = WiFi.SSID(i);
             if(ssid.length() == 0)
@@ -331,47 +347,35 @@ namespace RFLink { namespace Wifi {
             bool secure = WiFi.encryptionType(i) != ENC_TYPE_NONE;
             int existing = -1;
             for(int j = 0; j < cachedWifiNetworkCount; j++) {
-              if(ssid == cachedWifiSsids[j]) {
+              if(ssid == cachedWifiNetworks[j].ssid) {
                 existing = j;
                 break;
               }
             }
             if(existing >= 0) {
-              if(rssi <= cachedWifiRssis[existing])
+              if(rssi <= cachedWifiNetworks[existing].rssi)
                 continue;
               for(int j = existing; j + 1 < cachedWifiNetworkCount; j++) {
-                cachedWifiSsids[j] = cachedWifiSsids[j + 1];
-                cachedWifiRssis[j] = cachedWifiRssis[j + 1];
-                cachedWifiSecure[j] = cachedWifiSecure[j + 1];
+                cachedWifiNetworks[j] = cachedWifiNetworks[j + 1];
               }
               cachedWifiNetworkCount--;
             }
             int insertAt = cachedWifiNetworkCount;
             for(int j = 0; j < cachedWifiNetworkCount; j++) {
-              if(rssi > cachedWifiRssis[j]) {
+              if(rssi > cachedWifiNetworks[j].rssi) {
                 insertAt = j;
                 break;
               }
             }
-            if(insertAt >= MAX_WIFI_SCAN_CACHE)
-              continue;
-            int limit = cachedWifiNetworkCount;
-            if(limit >= MAX_WIFI_SCAN_CACHE)
-              limit = MAX_WIFI_SCAN_CACHE - 1;
-            for(int j = limit; j > insertAt; j--) {
-              cachedWifiSsids[j] = cachedWifiSsids[j - 1];
-              cachedWifiRssis[j] = cachedWifiRssis[j - 1];
-              cachedWifiSecure[j] = cachedWifiSecure[j - 1];
+            for(int j = cachedWifiNetworkCount; j > insertAt; j--) {
+              cachedWifiNetworks[j] = cachedWifiNetworks[j - 1];
             }
-            cachedWifiSsids[insertAt] = ssid;
-            cachedWifiRssis[insertAt] = rssi;
-            cachedWifiSecure[insertAt] = secure;
-            if(cachedWifiNetworkCount < MAX_WIFI_SCAN_CACHE)
-              cachedWifiNetworkCount++;
+            cachedWifiNetworks[insertAt] = {ssid, rssi, secure};
+            cachedWifiNetworkCount++;
           }
           WiFi.scanDelete();
           WiFi.mode(previousMode);
-          Serial.printf_P(PSTR("Cached %i WiFi networks\r\n"), cachedWifiNetworkCount);
+          Serial.printf_P(PSTR("Cached %i unique WiFi networks\r\n"), cachedWifiNetworkCount);
         }
 
         int getCachedWifiNetworkCount() {
@@ -381,9 +385,9 @@ namespace RFLink { namespace Wifi {
         bool getCachedWifiNetwork(int index, String &ssid, int32_t &rssi, bool &secure) {
           if(index < 0 || index >= cachedWifiNetworkCount)
             return false;
-          ssid = cachedWifiSsids[index];
-          rssi = cachedWifiRssis[index];
-          secure = cachedWifiSecure[index];
+          ssid = cachedWifiNetworks[index].ssid;
+          rssi = cachedWifiNetworks[index].rssi;
+          secure = cachedWifiNetworks[index].secure;
           return true;
         }
 
@@ -452,6 +456,7 @@ namespace RFLink { namespace Wifi {
           stopMdnsDiscovery();
           stopAccessPoint();
           WiFi.enableAP(false);
+          clearWifiScanCache();
           if(params::client_enabled)
             WiFi.mode(WIFI_STA);
           setupAccessPointShutdownRequested = false;
