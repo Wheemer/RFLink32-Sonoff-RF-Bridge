@@ -13,7 +13,7 @@
 [![CodeQL](https://img.shields.io/github/actions/workflow/status/Wheemer/RFLink32-Sonoff-RF-Bridge/codeql.yml?style=for-the-badge&logo=github&logoColor=white&label=CODEQL&labelColor=555555)](https://github.com/Wheemer/RFLink32-Sonoff-RF-Bridge/security/code-scanning)
 [![License](https://img.shields.io/badge/LICENSE-RFLINK%20GATEWAY-64748B?style=for-the-badge&labelColor=555555)](License.txt)
 
-[Install](#install) • [Flash](#2-flash-the-bridge) • [Configure](#configure-home-assistant) • [Use](#use-the-bridge) • [Troubleshooting](#troubleshooting) • [Releases](https://github.com/Wheemer/RFLink32-Sonoff-RF-Bridge/releases)
+[Install](#install) • [Hardware modification](doc/sonoff_rf_bridge.md) • [Flash](#2-flash-the-bridge) • [Configure](#configure-home-assistant) • [Use](#use-the-bridge) • [Troubleshooting](#troubleshooting) • [Releases](https://github.com/Wheemer/RFLink32-Sonoff-RF-Bridge/releases)
 
 </div>
 
@@ -49,7 +49,7 @@ It is built for a single job: reliable local 433 MHz receive, learn, and transmi
 
 ### 2. Flash the bridge
 
-Download the `RFBridge-<version>-local-recovery.bin` asset from the [latest release](https://github.com/Wheemer/RFLink32-Sonoff-RF-Bridge/releases/latest). Flash it with a suitable ESP8266/ESP8285 serial flashing tool.
+Before flashing, complete the [modified Sonoff RF Bridge hardware instructions](doc/sonoff_rf_bridge.md). Download the `RFBridge-<version>-local-recovery.bin` asset from the [latest release](https://github.com/Wheemer/RFLink32-Sonoff-RF-Bridge/releases/latest). Flash it with a suitable ESP8266/ESP8285 serial flashing tool.
 
 The first flash is local. OTA updates begin only after the bridge has joined Wi-Fi and Home Assistant has added it.
 
