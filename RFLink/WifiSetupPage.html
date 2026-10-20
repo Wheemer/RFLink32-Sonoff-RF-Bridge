@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RF Bridge Wi-Fi setup</title>
+  <style>
+    :root { color-scheme: light; font-family: Arial, Helvetica, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100svh; background: #eef3f6; color: #17212a; }
+    main { min-height: 100svh; display: grid; place-items: center; padding: 20px 16px; }
+    .setup { width: min(100%, 420px); background: #fff; border: 1px solid #c7d4dc; border-radius: 8px; overflow: hidden; box-shadow: 0 8px 20px #17212a1a; }
+    header { padding: 16px 20px; background: #e4f4f9; border-bottom: 3px solid #1596c8; color: #183b4a; font-size: 16px; font-weight: 700; text-align: center; }
+    form { padding: 22px 20px; }
+    h1 { margin: 0 0 20px; font-size: 21px; line-height: 1.2; }
+    .field { margin: 0 0 18px; }
+    label { display: block; margin: 0 0 7px; color: #34495a; font-size: 14px; font-weight: 700; }
+    select, input, button { font: inherit; }
+    select, input { width: 100%; height: 44px; padding: 9px 11px; color: #17212a; background: #fff; border: 1px solid #9eafb9; border-radius: 5px; font-size: 16px; }
+    .password { display: flex; gap: 8px; }
+    .password input { min-width: 0; }
+    .icon-button { display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 44px; padding: 0; color: #34495a; background: #fff; border: 1px solid #9eafb9; border-radius: 5px; }
+    .icon-button svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; }
+    .icon-button.revealed .eye-slash { display: none; }
+    .save { width: 100%; height: 44px; color: #fff; background: #087da8; border: 1px solid #087da8; border-radius: 5px; font-size: 16px; font-weight: 700; }
+    .save:disabled { cursor: wait; opacity: .65; }
+    select:focus, input:focus, button:focus { outline: 2px solid #1596c8; outline-offset: 1px; }
+    .toast { display: none; margin: 0 0 16px; padding: 10px 12px; color: #fff; background: #087f4b; border-radius: 5px; font-size: 14px; line-height: 1.35; }
+    .toast.error { background: #b42845; }
+    @media (max-width: 520px) { main { place-items: start center; padding: 12px; } .setup { border-radius: 7px; } form { padding: 20px 16px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="setup" aria-labelledby="page-title">
+      <header>RF Link 32 - Sonoff RF Bridge</header>
+      <form id="wifi-form" method="post" action="/wifi">
+        <h1 id="page-title">Wi-Fi</h1>
+        <div id="toast" class="toast" role="status" aria-live="polite"></div>
+        <div class="field">
+          <label for="client_ssid">Wi-Fi network</label>
+          <select id="client_ssid" name="client_ssid" disabled><option>Finding nearby networks...</option></select>
+        </div>
+        <div class="field">
+          <label for="client_password">Wi-Fi password</label>
+          <div class="password">
+            <input id="client_password" name="client_password" type="password" autocomplete="new-password" value="">
+            <button id="toggle-password" class="icon-button" type="button" aria-label="Show password" title="Show password">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/><path class="eye-slash" d="M3 3l18 18"/></svg>
+            </button>
+          </div>
+        </div>
+        <button class="save" type="submit">Save</button>
+      </form>
+    </section>
+  </main>
+  <script>
+    (() => {
+      const form = document.getElementById('wifi-form');
+      const toast = document.getElementById('toast');
+      const password = document.getElementById('client_password');
+      const toggle = document.getElementById('toggle-password');
+      const select = document.getElementById('client_ssid');
+
+      const show = (message, error) => {
+        toast.textContent = message;
+        toast.className = error ? 'toast error' : 'toast';
+        toast.style.display = 'block';
+      };
+
+      const option = (value, text, selected) => {
+        const node = document.createElement('option');
+        node.value = value;
+        node.textContent = text;
+        node.selected = selected;
+        select.append(node);
+      };
+
+      const loadNetworks = async () => {
+        try {
+          const response = await fetch('/wifi/networks', {cache: 'no-store'});
+          if (!response.ok) throw new Error('network list unavailable');
+          const payload = await response.json();
+          const networks = Array.isArray(payload.networks) ? payload.networks : [];
+          const selected = typeof payload.selected === 'string' ? payload.selected : '';
+          select.replaceChildren();
+          let selectedPresent = false;
+          for (const network of networks) {
+            if (!network || typeof network.ssid !== 'string' || network.ssid.length === 0) continue;
+            const selectedHere = network.ssid === selected;
+            option(network.ssid, `${network.ssid} (${network.rssi} dBm)`, selectedHere);
+            selectedPresent ||= selectedHere;
+          }
+          if (selected && !selectedPresent) option(selected, `${selected} (saved network)`, true);
+          if (select.options.length === 0) option('', 'No Wi-Fi networks found', true);
+        } catch (_) {
+          select.replaceChildren();
+          option('', 'No Wi-Fi networks found', true);
+        }
+        select.disabled = false;
+      };
+
+      toggle.addEventListener('click', () => {
+        const reveal = password.type === 'password';
+        password.type = reveal ? 'text' : 'password';
+        toggle.classList.toggle('revealed', reveal);
+        toggle.setAttribute('aria-label', reveal ? 'Hide password' : 'Show password');
+        toggle.setAttribute('title', reveal ? 'Hide password' : 'Show password');
+      });
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const save = form.querySelector('.save');
+        save.disabled = true;
+        try {
+          const response = await fetch('/wifi', {method: 'POST', body: new FormData(form), credentials: 'same-origin'});
+          const message = await response.text();
+          show(message || (response.ok ? 'Saved. Connecting to Wi-Fi...' : 'Configuration was not saved.'), !response.ok);
+        } catch (_) {
+          show('Network error while saving.', true);
+        } finally {
+          save.disabled = false;
+        }
+      });
+
+      loadNetworks();
+    })();
+  </script>
+</body>
+</html>

@@ -7,6 +7,7 @@
 #include "10_Wifi.h"
 #include "11_Config.h"
 #include "12_Portal.h"
+#include "WifiSetupPage_gz.h"
 
 #if defined(ESP8266)
 #include "ESP8266WiFi.h"
@@ -48,102 +49,42 @@ namespace RFLink { namespace Portal {
         bool requestIsFromAccessPoint(AsyncWebServerRequest *request);
         bool checkPageAuthentication(AsyncWebServerRequest *request);
 
-        void writeEscaped(Print *out, const String &input) {
-          for(size_t i = 0; i < input.length(); i++) {
-            char c = input.charAt(i);
-            if(c == '&')
-              out->print(F("&amp;"));
-            else if(c == '<')
-              out->print(F("&lt;"));
-            else if(c == '>')
-              out->print(F("&gt;"));
-            else if(c == '"')
-              out->print(F("&quot;"));
-            else
-              out->print(c);
-          }
-        }
-
-        void appendEscaped(String &out, const String &input) {
-          for(size_t i = 0; i < input.length(); i++) {
-            char c = input.charAt(i);
-            if(c == '&')
-              out += F("&amp;");
-            else if(c == '<')
-              out += F("&lt;");
-            else if(c == '>')
-              out += F("&gt;");
-            else if(c == '"')
-              out += F("&quot;");
-            else
-              out += c;
-          }
-        }
-
-        String wifiSetupOptions() {
-          // The document itself stays static. This is only an option fragment,
-          // served by its own endpoint after the page has loaded.
-          String options;
-          options.reserve(1536);
-          const String configuredSsid = RFLink::Wifi::getConfiguredClientSsid();
-          const bool hasConfiguredSsid = configuredSsid.length() > 0 && configuredSsid != F("My Home Wifi");
-          bool configuredSsidInCache = false;
-          const int count = RFLink::Wifi::getCachedWifiNetworkCount();
-          for(int i = 0; i < count; i++) {
-            String ssid;
-            int32_t rssi;
-            bool secure;
-            if(RFLink::Wifi::getCachedWifiNetwork(i, ssid, rssi, secure) && ssid == configuredSsid) {
-              configuredSsidInCache = true;
-              break;
-            }
-          }
-
-          if(hasConfiguredSsid && !configuredSsidInCache) {
-            options += F("<option selected value=\"");
-            appendEscaped(options, configuredSsid);
-            options += F("\">");
-            appendEscaped(options, configuredSsid);
-            options += F(" (saved network)</option>");
-          }
-
-          for(int i = 0; i < count; i++) {
-            String ssid;
-            int32_t rssi;
-            bool secure;
-            if(!RFLink::Wifi::getCachedWifiNetwork(i, ssid, rssi, secure))
-              continue;
-            options += F("<option");
-            if(ssid == configuredSsid)
-              options += F(" selected");
-            options += F(" value=\"");
-            appendEscaped(options, ssid);
-            options += F("\">");
-            appendEscaped(options, ssid);
-            options += F(" (");
-            options += rssi;
-            options += F(" dBm)</option>");
-          }
-
-          if(options.length() == 0)
-            options = F("<option value=\"\">No WiFi networks found</option>");
-          return options;
-        }
-
         void serveWifiSetupNetworks(AsyncWebServerRequest *request) {
           if(!checkPageAuthentication(request))
             return;
-          request->send(200, F("text/html; charset=utf-8"), wifiSetupOptions());
-        }
 
-        // Keep the proven portal form in flash.  This is the same DOM and
-        // interaction model as the prior streamed page, without the heap use
-        // that made complete responses unreliable on the ESP8266.
-        static const char wifiSetupPageStable[] PROGMEM = R"HTML(<!doctype html>
-<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RF Bridge WiFi</title><style>
-*{box-sizing:border-box}body{margin:0;background:#eef3f6;color:#17212a;font-family:Avenir,Helvetica,Arial,sans-serif}.app{min-height:100svh;display:flex;align-items:center;justify-content:center;padding:24px 16px}.page{width:100%;max-width:420px}.bar{padding:15px 18px;background:#e4f4f9;border:1px solid #b7dce8;border-bottom:3px solid #1596c8;border-radius:8px 8px 0 0;color:#183b4a;font-size:16px;font-weight:700;text-align:center}.card{padding:22px 20px;background:#fff;border:1px solid #c7d4dc;border-top:0;border-radius:0 0 8px 8px;box-shadow:0 8px 20px #17212a1a}h1{margin:0 0 18px;color:#17212a;font-size:20px;font-weight:700;text-align:left}label{display:block;margin:0 0 7px;color:#34495a;font-size:14px;font-weight:700}.field{margin:0 0 18px}select,input{width:100%;height:44px;padding:9px 11px;background:#fff;border:1px solid #9eafb9;border-radius:5px;color:#17212a;font:inherit;font-size:16px}.password{display:flex;gap:8px}.password input{min-width:0}.password button{width:44px;flex:0 0 44px;padding:0;background:#fff;border:1px solid #9eafb9;border-radius:5px;display:grid;place-items:center}.password button svg{width:20px;height:20px;fill:none;stroke:#34495a;stroke-width:2;stroke-linecap:round}.password button.revealed .eye-slash{display:none}.btn{height:44px;background:#087da8;border:1px solid #087da8;border-radius:5px;color:#fff;cursor:pointer;font:inherit;font-size:16px;font-weight:700}.btn:disabled{opacity:.65;cursor:wait}select:focus,input:focus,.password button:focus{outline:2px solid #1596c8;outline-offset:1px}.toast{display:none;margin:0 0 16px;padding:10px 12px;background:#087f4b;border-radius:5px;color:#fff;font-size:14px}.toast.err{background:#b42845}@media(max-width:520px){.app{align-items:flex-start;padding:12px}.bar{padding:14px 16px}.card{padding:20px 16px}}
-</style></head><body><div class="app"><div class="page"><div class="bar">RF Link 32 - Sonoff RF Bridge</div><div class="card"><h1>WiFi</h1><div id="toast" class="toast"></div><form id="wifi-form" method="post" action="/wifi"><div class="field"><label for="client_ssid">WiFi name</label><select id="client_ssid" name="client_ssid" disabled><option>Scanning nearby networks...</option></select></div><div class="field"><label for="client_password">WiFi password</label><div class="password"><input id="client_password" name="client_password" type="password" autocomplete="new-password" value=""><button id="toggle-password" type="button" aria-label="Show password" title="Show password"><svg class="eye-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.5"/><path class="eye-slash" d="M3 3l18 18"/></svg></button></div></div><input type="submit" class="btn" value="Save"></form><script>(function(){var f=document.getElementById('wifi-form'),t=document.getElementById('toast'),p=document.getElementById('client_password'),v=document.getElementById('toggle-password'),s=document.getElementById('client_ssid');function show(m,e){t.textContent=m;t.className=e?'toast err':'toast';t.style.display='block'}function loadNetworks(){fetch('/wifi/networks').then(function(r){return r.text()}).then(function(x){s.innerHTML=x;s.disabled=false}).catch(function(){s.innerHTML='<option value="">No WiFi networks found</option>';s.disabled=false})}v.addEventListener('click',function(){var showPassword=p.type==='password';p.type=showPassword?'text':'password';v.classList.toggle('revealed',showPassword);v.setAttribute('aria-label',showPassword?'Hide password':'Show password');v.setAttribute('title',showPassword?'Hide password':'Show password')});f.addEventListener('submit',function(ev){ev.preventDefault();var b=f.querySelector('[type=submit]');if(b)b.disabled=true;var d=new FormData(f);d.append('async','1');fetch('/wifi',{method:'POST',body:d,credentials:'same-origin'}).then(function(r){return r.text().then(function(x){return{ok:r.ok,text:x}})}).then(function(r){show(r.text||(r.ok?'Saved. Connecting to WiFi...':'Save failed'),!r.ok)}).catch(function(){show('Network error while saving',true)}).finally(function(){if(b)b.disabled=false})});loadNetworks()})();</script></div></div></div></body></html>)HTML";
+          StaticJsonDocument<768> document;
+          JsonObject root = document.to<JsonObject>();
+          const String configuredSsid = RFLink::Wifi::getConfiguredClientSsid();
+          if(configuredSsid.length() > 0 && configuredSsid != F("My Home Wifi"))
+            root[F("selected")] = configuredSsid;
+          else
+            root[F("selected")] = F("");
+          JsonArray networks = root.createNestedArray(F("networks"));
+
+          const int count = RFLink::Wifi::getCachedWifiNetworkCount();
+          for(int index = 0; index < count; index++) {
+            String ssid;
+            int32_t rssi;
+            bool secure;
+            if(!RFLink::Wifi::getCachedWifiNetwork(index, ssid, rssi, secure) || ssid.length() == 0)
+              continue;
+
+            JsonObject network = networks.createNestedObject();
+            network[F("ssid")] = ssid;
+            network[F("rssi")] = rssi;
+          }
+
+          if(document.overflowed()) {
+            request->send(500, F("application/json"), F("{\"error\":\"WiFi network list overflow\"}"));
+            return;
+          }
+
+          String payload;
+          payload.reserve(512);
+          serializeJson(document, payload);
+          request->send(200, F("application/json; charset=utf-8"), payload);
+        }
 
         bool pushConfigAndReply(AsyncWebServerRequest *request, JsonObject root, const __FlashStringHelper *page) {
           String message;
@@ -315,9 +256,10 @@ namespace RFLink { namespace Portal {
           AsyncWebServerResponse *staticResponse = request->beginResponse(
                   200,
                   F("text/html; charset=utf-8"),
-                  reinterpret_cast<const uint8_t *>(wifiSetupPageStable),
-                  strlen_P(wifiSetupPageStable)
+                  wifiSetupPageGzip,
+                  wifiSetupPageGzipLength
           );
+          staticResponse->addHeader(F("Content-Encoding"), F("gzip"));
           staticResponse->addHeader(F("Cache-Control"), F("no-store"));
           staticResponse->addHeader(F("Connection"), F("close"));
           request->send(staticResponse);

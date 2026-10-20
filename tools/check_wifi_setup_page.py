@@ -1,51 +1,64 @@
-"""Guard the AP Wi-Fi setup page against incomplete response regressions."""
+"""Verify the fixed gzip AP portal asset and its C++ transport contract."""
 
+from __future__ import annotations
+
+import gzip
+import re
 import sys
 from pathlib import Path
 
 source = Path(sys.argv[1]).read_text(encoding="utf-8")
-required = (
-    "static const char wifiSetupPageStable[] PROGMEM",
-    "Scanning nearby networks...",
-    "id=\"wifi-form\"",
-    "id=\"client_password\"",
-    "id=\"toggle-password\"",
-    "type=\"submit\" class=\"btn\" value=\"Save\"",
-    "id=\"toast\"",
-    "fetch('/wifi'",
-    "request->beginResponse(",
-    "strlen_P(wifiSetupPageStable)",
+page = Path(sys.argv[2]).read_text(encoding="utf-8")
+header = Path(sys.argv[3]).read_text(encoding="ascii")
+wifi = Path(sys.argv[4]).read_text(encoding="utf-8")
+
+required_page = (
+    '<form id="wifi-form"',
+    'id="client_ssid"',
+    'id="client_password"',
+    'id="toggle-password"',
+    'class="save" type="submit"',
+    'id="toast"',
     "fetch('/wifi/networks'",
-    "serveWifiSetupNetworks",
-    "background:#e4f4f9",
-    "color:#183b4a",
-    "border-bottom:3px solid #1596c8",
-    "@media(max-width:520px)",
+    "fetch('/wifi'",
+    "response.json()",
+    "textContent",
 )
-
-missing = [fragment for fragment in required if fragment not in source]
+missing = [fragment for fragment in required_page if fragment not in page]
 if missing:
-    raise SystemExit("Wi-Fi setup page is incomplete: " + ", ".join(missing))
+    raise SystemExit("Wi-Fi portal page is incomplete: " + ", ".join(missing))
 
-if source.count("static const char wifiSetupPage") != 1:
-    raise SystemExit("Wi-Fi setup source must contain exactly one portal template")
+values = bytes(int(value, 16) for value in re.findall(r"0x([0-9a-f]{2})", header))
+if gzip.decompress(values).decode("utf-8") != page:
+    raise SystemExit("Wi-Fi portal gzip header does not match source HTML")
 
-handler_start = source.index("void serveWifiSetupPage")
-handler_end = source.index("void serveWifiSetupPost", handler_start)
-handler = source[handler_start:handler_end]
-if "AsyncResponseStream" in handler:
-    raise SystemExit("Wi-Fi setup page must not retain a streamed fallback renderer")
+required_source = (
+    '#include "WifiSetupPage_gz.h"',
+    'wifiSetupPageGzip,',
+    'wifiSetupPageGzipLength',
+    'addHeader(F("Content-Encoding"), F("gzip"))',
+    'F("application/json; charset=utf-8")',
+    'root[F("selected")]',
+    'createNestedArray(F("networks"))',
+)
+missing = [fragment for fragment in required_source if fragment not in source]
+if missing:
+    raise SystemExit("Wi-Fi portal transport is incomplete: " + ", ".join(missing))
 
-if "wifiSetupPageStable" not in handler:
-    raise SystemExit("Wi-Fi setup handler is not serving the stable portal markup")
+if "wifiSetupPageStable" in source or "wifiSetupOptions" in source or "AsyncResponseStream" in source:
+    raise SystemExit("legacy Wi-Fi portal renderer remains active")
 
-active_start = source.index("static const char wifiSetupPageStable[] PROGMEM")
-active_end = source.index(")HTML\";", active_start)
-active_page = source[active_start:active_end]
-if "strlen_P(wifiSetupPageStable),\n                  wifiSetupOptions" in handler:
-    raise SystemExit("Wi-Fi setup page must not use the AsyncWebServer template processor")
-desktop_styles = active_page.split("@media", 1)[0]
-if desktop_styles.count(".bar{") != 1:
-    raise SystemExit("Wi-Fi setup page must have one unambiguous header style.")
+handler = source[source.index("void serveWifiSetupPage"):source.index("void serveWifiSetupPost")]
+if "wifiSetupPageGzipLength," in handler:
+    raise SystemExit("Wi-Fi portal response must not attach a template processor")
 
-print("wifi_setup_page=complete_flash_backed")
+required_wifi = (
+    "const int MAX_WIFI_SCAN_CACHE = 4;",
+    "if(ssid == cachedWifiSsids[j])",
+    "cachedWifiNetworkCount--;",
+)
+missing = [fragment for fragment in required_wifi if fragment not in wifi]
+if missing:
+    raise SystemExit("Wi-Fi scan cache is incomplete: " + ", ".join(missing))
+
+print("wifi_setup_page=fixed_gzip_asset")

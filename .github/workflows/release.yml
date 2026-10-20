@@ -39,7 +39,8 @@ jobs:
 
       - name: Validate OTA staging layout
         run: |
-          python tools/check_wifi_setup_page.py RFLink/12_Portal.cpp
+          python tools/generate_wifi_setup_asset.py RFLink/WifiSetupPage.html RFLink/WifiSetupPage_gz.h
+          python tools/check_wifi_setup_page.py RFLink/12_Portal.cpp RFLink/WifiSetupPage.html RFLink/WifiSetupPage_gz.h RFLink/10_Wifi.cpp
           python tools/validate_ota_layout.py .pio/build/sonoff_bridge/firmware.bin
           python tools/check_ota_signing_lifecycle.py
 

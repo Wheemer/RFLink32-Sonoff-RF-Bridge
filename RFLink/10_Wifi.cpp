@@ -329,6 +329,23 @@ namespace RFLink { namespace Wifi {
               continue;
             int32_t rssi = WiFi.RSSI(i);
             bool secure = WiFi.encryptionType(i) != ENC_TYPE_NONE;
+            int existing = -1;
+            for(int j = 0; j < cachedWifiNetworkCount; j++) {
+              if(ssid == cachedWifiSsids[j]) {
+                existing = j;
+                break;
+              }
+            }
+            if(existing >= 0) {
+              if(rssi <= cachedWifiRssis[existing])
+                continue;
+              for(int j = existing; j + 1 < cachedWifiNetworkCount; j++) {
+                cachedWifiSsids[j] = cachedWifiSsids[j + 1];
+                cachedWifiRssis[j] = cachedWifiRssis[j + 1];
+                cachedWifiSecure[j] = cachedWifiSecure[j + 1];
+              }
+              cachedWifiNetworkCount--;
+            }
             int insertAt = cachedWifiNetworkCount;
             for(int j = 0; j < cachedWifiNetworkCount; j++) {
               if(rssi > cachedWifiRssis[j]) {
