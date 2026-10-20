@@ -40,7 +40,7 @@ MAX_FIRMWARE_BYTES = 450_000
 DOWNLOAD_ROUTE = "/api/rf_bridge/firmware/{token}"
 DOWNLOAD_VIEW_KEY = "firmware_download_view"
 DOWNLOAD_VIEW_DATA_KEY = f"{DOMAIN}_{DOWNLOAD_VIEW_KEY}"
-FIRMWARE_UPDATE_VERIFY_SECONDS = 45
+FIRMWARE_UPDATE_VERIFY_SECONDS = 75
 FIRMWARE_UPDATE_SETTLE_SECONDS = 15
 VERSION_CHARACTERS = "0123456789.-_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -362,7 +362,11 @@ class RFBridgeFirmwareUpdate(UpdateEntity):
                 view.discard(token)
                 raise
 
-            if not await self._async_wait_for_version(release.version):
+            try:
+                verified = await self._async_wait_for_version(release.version)
+            finally:
+                await self._hub.async_resume_after_firmware_update()
+            if not verified:
                 update_detail: list[str] = []
                 try:
                     status = await self._hub.async_probe_status()

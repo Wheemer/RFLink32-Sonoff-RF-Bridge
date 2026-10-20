@@ -61,12 +61,24 @@ def main() -> None:
     update_source = Path("custom_components/rf_bridge/update.py").read_text(
         encoding="utf-8"
     )
-    if "FIRMWARE_UPDATE_QUIET_SECONDS = 15" not in hub_source:
-        raise SystemExit("Home Assistant must suspend WebSocket reconnects during OTA.")
+    if "FIRMWARE_UPDATE_QUIET_SECONDS = 75" not in hub_source:
+        raise SystemExit("Home Assistant must keep the persistent socket quiet during OTA verification.")
     if "self._ota_quiet_until" not in hub_source:
         raise SystemExit("Home Assistant OTA quiet-window state is missing.")
+    if "self._ota_quiet_event = asyncio.Event()" not in hub_source:
+        raise SystemExit("Home Assistant OTA quiet-window wake event is missing.")
+    if "await asyncio.wait_for(" not in hub_source or "self._ota_quiet_event.wait()" not in hub_source:
+        raise SystemExit("Home Assistant OTA quiet window cannot be ended after verification.")
+    if "def async_resume_after_firmware_update(self)" not in hub_source:
+        raise SystemExit("Home Assistant OTA reconnect resume hook is missing.")
+    if "FIRMWARE_UPDATE_VERIFY_SECONDS = 75" not in update_source:
+        raise SystemExit("Home Assistant OTA verification window is too short.")
     if "FIRMWARE_UPDATE_SETTLE_SECONDS = 15" not in update_source:
         raise SystemExit("Home Assistant must defer OTA status probes until flashing ends.")
+    if "verified = await self._async_wait_for_version(release.version)" not in update_source:
+        raise SystemExit("Home Assistant must wait for the verified firmware version.")
+    if "self._hub.async_resume_after_firmware_update()" not in update_source:
+        raise SystemExit("Home Assistant must resume its socket after OTA verification.")
     print("ota_signing_lifecycle=filesystem_and_api_handoff_verified")
 
 

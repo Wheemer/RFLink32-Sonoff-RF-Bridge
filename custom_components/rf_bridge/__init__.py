@@ -48,7 +48,7 @@ WS_RECONNECT_SECONDS = 5
 WS_HEARTBEAT_SECONDS = 15
 WS_CONNECTION_WAIT_SECONDS = 8
 FIRMWARE_UPDATE_CONNECTION_WAIT_SECONDS = 45
-FIRMWARE_UPDATE_QUIET_SECONDS = 15
+FIRMWARE_UPDATE_QUIET_SECONDS = 75
 WS_MIN_COMMAND_TIMEOUT = 8
 WS_COMMAND_TIMEOUT_MARGIN = 10
 SENDRF_PREFIX = "10;signal;sendRF;"
@@ -235,6 +235,8 @@ class RFBridgeHub:
         self._pending: dict[int, asyncio.Future[dict[str, Any]]] = {}
         self._request_id = 0
         self._ota_quiet_until = 0.0
+        self._ota_quiet_event = asyncio.Event()
+        self._ota_quiet_event.set()
         self._learning_expiry_cancel: Callable[[], None] | None = None
 
     @property
@@ -316,7 +318,12 @@ class RFBridgeHub:
         while True:
             quiet_seconds = self._ota_quiet_until - asyncio.get_running_loop().time()
             if quiet_seconds > 0:
-                await asyncio.sleep(quiet_seconds)
+                try:
+                    await asyncio.wait_for(
+                        self._ota_quiet_event.wait(), timeout=quiet_seconds
+                    )
+                except TimeoutError:
+                    pass
                 continue
             try:
                 async with session.ws_connect(
@@ -637,8 +644,14 @@ class RFBridgeHub:
         self._ota_quiet_until = (
             asyncio.get_running_loop().time() + FIRMWARE_UPDATE_QUIET_SECONDS
         )
+        self._ota_quiet_event.clear()
         if self._ws is not None and not self._ws.closed:
             await self._ws.close()
+
+    async def async_resume_after_firmware_update(self) -> None:
+        """Let the persistent socket reconnect after OTA verification ends."""
+        self._ota_quiet_until = 0.0
+        self._ota_quiet_event.set()
 
     async def async_send_named(self, command_key: str) -> dict[str, Any]:
         if command_key not in self.commands:
