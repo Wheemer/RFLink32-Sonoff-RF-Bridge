@@ -626,13 +626,7 @@ class RFBridgeHub:
         # Close the persistent Home Assistant socket before the OTA
         # updater starts so it does not compete with signed flash writes.
         if self._ws is not None and not self._ws.closed:
-            try:
-                await self._ws.close()
-            except aiohttp.ClientError as err:
-                # The update was already accepted by the firmware. A socket
-                # close race must not turn that accepted update into an
-                # unhelpful frontend "unknown error".
-                _LOGGER.debug("RF Bridge socket closed during OTA handoff: %s", err)
+            await self._ws.close()
 
     async def async_send_named(self, command_key: str) -> dict[str, Any]:
         if command_key not in self.commands:

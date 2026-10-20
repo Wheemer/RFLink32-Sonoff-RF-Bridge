@@ -176,12 +176,10 @@ namespace {
 
     ESP8266HTTPUpdate updater(HTTP_UPDATE_TIMEOUT_MS);
     updater.rebootOnUpdate(false);
-    // The bridge has very little contiguous heap after Wi-Fi, the API, and
-    // the signature verifier are allocated. HTTPUpdate must be allowed to
-    // close existing sockets before it allocates its download/write buffers;
-    // retaining the API socket here can reset the ESP part-way through a
-    // signed update and leave persistent state stuck at "fetching".
-    updater.closeConnectionsOnUpdate(true);
+    // Home Assistant closes its long-lived socket before scheduling OTA. Do
+    // not also globally tear down TCP/UDP from inside the updater: that can
+    // disrupt the async API while the bridge is writing the staged image.
+    updater.closeConnectionsOnUpdate(false);
     WiFiClient client;
     const t_httpUpdate_return result = updater.update(
       client, String(url), String(RFLINK_FIRMWARE_VERSION)
