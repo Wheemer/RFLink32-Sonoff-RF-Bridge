@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import gzip
+from pathlib import Path
 
 from SCons.Script import Import
 
@@ -26,7 +27,24 @@ def _align_down(value: int) -> int:
     return value & ~(FLASH_SECTOR_SIZE - 1)
 
 
+def validate_signed_gzip_hash_read(env) -> None:
+    """Reject ESP8266 cores that hash the final gzip block through u32 reads."""
+    framework_dir = Path(
+        env.PioPlatform().get_package_dir("framework-arduinoespressif8266")
+    )
+    updater_source = (framework_dir / "cores" / "esp8266" / "Updater.cpp").read_text(
+        encoding="utf-8"
+    )
+    safe_read = "ESP.flashRead(_startAddress + offset, buff, len);"
+    unsafe_read = "reinterpret_cast<uint32_t *>(&buff[0]), len"
+    if safe_read not in updater_source or unsafe_read in updater_source:
+        raise RuntimeError(
+            "ESP8266 framework lacks the signed gzip final-block hash-read fix"
+        )
+
+
 def validate_ota_layout(source, target, env):
+    validate_signed_gzip_hash_read(env)
     firmware_path = str(target[0])
     with open(firmware_path, "rb") as firmware_file:
         firmware = firmware_file.read()
