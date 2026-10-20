@@ -55,11 +55,6 @@ namespace RFLink { namespace Portal {
 
           StaticJsonDocument<768> document;
           JsonObject root = document.to<JsonObject>();
-          const String configuredSsid = RFLink::Wifi::getConfiguredClientSsid();
-          if(configuredSsid.length() > 0 && configuredSsid != F("My Home Wifi"))
-            root[F("selected")] = configuredSsid;
-          else
-            root[F("selected")] = F("");
           JsonArray networks = root.createNestedArray(F("networks"));
 
           const int count = RFLink::Wifi::getCachedWifiNetworkCount();

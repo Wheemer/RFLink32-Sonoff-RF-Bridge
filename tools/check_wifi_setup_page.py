@@ -38,12 +38,14 @@ required_source = (
     'wifiSetupPageGzipLength',
     'addHeader(F("Content-Encoding"), F("gzip"))',
     'F("application/json; charset=utf-8")',
-    'root[F("selected")]',
     'createNestedArray(F("networks"))',
 )
 missing = [fragment for fragment in required_source if fragment not in source]
 if missing:
     raise SystemExit("Wi-Fi portal transport is incomplete: " + ", ".join(missing))
+
+if "saved network" in page:
+    raise SystemExit("Wi-Fi portal must not include a saved-network fallback")
 
 if "wifiSetupPageStable" in source or "wifiSetupOptions" in source or "AsyncResponseStream" in source:
     raise SystemExit("legacy Wi-Fi portal renderer remains active")

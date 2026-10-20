@@ -82,16 +82,11 @@
           if (!response.ok) throw new Error('network list unavailable');
           const payload = await response.json();
           const networks = Array.isArray(payload.networks) ? payload.networks : [];
-          const selected = typeof payload.selected === 'string' ? payload.selected : '';
           select.replaceChildren();
-          let selectedPresent = false;
           for (const network of networks) {
             if (!network || typeof network.ssid !== 'string' || network.ssid.length === 0) continue;
-            const selectedHere = network.ssid === selected;
-            option(network.ssid, `${network.ssid} (${network.rssi} dBm)`, selectedHere);
-            selectedPresent ||= selectedHere;
+            option(network.ssid, `${network.ssid} (${network.rssi} dBm)`, select.options.length === 0);
           }
-          if (selected && !selectedPresent) option(selected, `${selected} (saved network)`, true);
           if (select.options.length === 0) option('', 'No Wi-Fi networks found', true);
         } catch (_) {
           select.replaceChildren();
