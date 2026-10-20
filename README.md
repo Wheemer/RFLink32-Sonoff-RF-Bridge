@@ -20,7 +20,7 @@
 
 RF Bridge is a focused [RFLink32](https://github.com/cpainchaud/RFLink32) fork and Home Assistant integration for one purpose: turn a **direct-hack modified Sonoff RF Bridge R2 v2.2** into a dependable local 433 MHz bridge.
 
-It receives, learns, and transmits RF commands directly from Home Assistant. There is no cloud account, MQTT broker, serial-to-network bridge, or permanent device web interface.
+It receives, learns, and transmits RF commands directly through a modern local Home Assistant API. Discovery, configuration, named events, command buttons, diagnostics, and signed OTA firmware updates are all first-class Home Assistant features.
 
 > [!WARNING]
 > **This is not a generic RFLink32 firmware.** It supports only the modified Sonoff RF Bridge R2 v2.2 described in the [hardware guide](doc/sonoff_rf_bridge.md). Do not flash this build to an unmodified bridge or another ESP8266/ESP32 board.
@@ -31,18 +31,18 @@ It receives, learns, and transmits RF commands directly from Home Assistant. The
 | --- | --- |
 | **Hardware** | Sonoff RF Bridge R2 v2.2 with the required direct-hack radio modification |
 | **Radio** | Local 433 MHz receive, learn, and transmit |
-| **Home Assistant** | Automatic local discovery, config flow, device entities, buttons, events, diagnostics, and updates |
-| **Transport** | Local WebSocket API on port `8080` |
+| **Home Assistant API** | Current Home Assistant discovery, config-flow, entity, event, button, diagnostic, and update model |
+| **Transport** | Direct local WebSocket API on port `8080` |
 | **First setup** | Local serial flash, then a temporary Wi-Fi setup access point |
-| **After setup** | Local Home Assistant control and signed OTA firmware updates |
+| **Firmware updates** | Signed OTA updates delivered and installed from Home Assistant |
 
 ## What It Does
 
-- **Stays local:** Home Assistant communicates with the bridge directly over the LAN.
+- **Uses the Home Assistant API:** Home Assistant communicates with the bridge directly over the LAN through its local WebSocket API, with no broker or serial bridge in between.
 - **Discovers itself:** After Wi-Fi setup, the bridge advertises `_rfbridge._tcp.local.` and appears as **RF Bridge** in Home Assistant.
 - **Receives and learns:** Use the event entity to consume named received commands, or capture the next physical press in learn mode.
 - **Sends named commands:** Define transmit commands in the integration options and use the generated buttons in dashboards, scripts, and automations.
-- **Updates safely:** The firmware update entity uses signed release assets after the first local flash.
+- **Updates from Home Assistant:** The firmware update entity installs signed release assets after the first local flash; no return to serial flashing is required for normal releases.
 - **Keeps setup small:** The temporary setup page only handles Wi-Fi onboarding; it turns itself off after a successful connection.
 
 ## Install
@@ -111,7 +111,7 @@ The integration validates the downloaded image's SHA-256 and gives the bridge a 
 | **RF Bridge integration** | Discovery, device and entity setup, command configuration, learning, and OTA staging |
 | **GitHub release workflow** | ESP8285 build, OTA layout checks, signing, release assets, and manifest publication |
 
-The firmware preserves RFLink command compatibility while replacing the old MQTT and serial transport paths with the local API.
+The firmware preserves RFLink command compatibility while presenting it through a direct local API built around Home Assistant's current discovery, config-flow, entity, event, button, diagnostic, and update model.
 
 ## Troubleshooting
 
