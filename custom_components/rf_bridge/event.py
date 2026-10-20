@@ -11,6 +11,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import (
     RFBridgeHub,
     annotate_known_command,
+    diagnostics_signal,
     parse_rflink_message,
     rf_event_signal,
 )
@@ -52,6 +53,13 @@ class RFBridgeRfEventEntity(EventEntity):
                 self.hass,
                 rf_event_signal(self._hub.entry.entry_id),
                 self._handle_rf_event,
+            )
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                diagnostics_signal(self._hub.entry.entry_id),
+                self.async_write_ha_state,
             )
         )
 
