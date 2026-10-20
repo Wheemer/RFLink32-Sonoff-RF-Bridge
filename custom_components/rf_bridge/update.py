@@ -308,7 +308,7 @@ class RFBridgeFirmwareUpdate(UpdateEntity):
                     status = await self._hub.async_probe_status()
                     if status.get(CONF_SW_VERSION) == version:
                         return True
-                except (aiohttp.ClientError, ValueError) as err:
+                except (aiohttp.ClientError, HomeAssistantError, ValueError) as err:
                     _LOGGER.debug("RF Bridge has not returned from OTA yet: %s", err)
             await asyncio.sleep(1)
         return self._hub.status.get(CONF_SW_VERSION) == version
