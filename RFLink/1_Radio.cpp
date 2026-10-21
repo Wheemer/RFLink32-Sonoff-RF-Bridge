@@ -135,7 +135,9 @@ namespace RFLink { namespace Radio  {
 
 
     Config::ConfigItem configItems[] =  {
+            #ifndef RFLINK_SONOFF_BRIDGE_DIRECT_HACK
             Config::ConfigItem(json_name_hardware,  Config::SectionId::Radio_id, hardwareNames[RFLink_default_Radio_HardwareType], paramsUpdatedCallback),
+            #endif
 
             #ifndef RFLINK_USE_HARDCODED_RADIO_PINS_ONLY
             Config::ConfigItem(json_name_rx_data,   Config::SectionId::Radio_id, PIN_RF_RX_DATA, paramsUpdatedCallback),
@@ -181,6 +183,13 @@ namespace RFLink { namespace Radio  {
       Config::ConfigItem *item;
       bool changesDetected = false;
 
+      #ifdef RFLINK_SONOFF_BRIDGE_DIRECT_HACK
+      // The direct-hacked Sonoff Bridge is not a generic radio board. Its
+      // hardware and pins are compile-time wiring, never persisted settings.
+      if (newHardwareId != HardwareType::HW_basic_t)
+        changesDetected = true;
+      newHardwareId = HardwareType::HW_basic_t;
+      #else
       item = Config::findConfigItem(json_name_hardware, Config::SectionId::Radio_id);
       if( strcmp(hardwareNames[hardware], item->getCharValue()) != 0) {
         newHardwareId =  hardwareIDFromString(item->getCharValue());
@@ -195,6 +204,7 @@ namespace RFLink { namespace Radio  {
         }
         // changes will be applied at the end of this function
       }
+      #endif // RFLINK_SONOFF_BRIDGE_DIRECT_HACK
 
       #ifndef RFLINK_USE_HARDCODED_RADIO_PINS_ONLY
 

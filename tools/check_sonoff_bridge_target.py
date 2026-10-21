@@ -30,6 +30,11 @@ def main() -> None:
         "-D RFLINK_USE_HARDCODED_RADIO_PINS_ONLY",
         "-D RFLINK_NO_RADIOLIB_SUPPORT",
         "-D RFLINK_SONOFF_BRIDGE_CONTINUOUS_RX",
+        "-D RFLINK_SONOFF_BRIDGE_DIRECT_HACK",
+        "-D PIN_RF_RX_DATA=4",
+        "-D PIN_RF_RX_NMOS=-1",
+        "-D PIN_RF_TX_DATA=5",
+        "-D PPIN_RF_TX_NMOS=-1",
     ):
         require(platformio, setting)
 

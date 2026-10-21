@@ -141,8 +141,56 @@ namespace RFLink
 #endif
 
       item = Config::findConfigItem(json_name_sample_rate, Config::SectionId::Signal_id);
-      const long configuredSampleRate = item->getLongIntValue();
+#ifdef RFLINK_SONOFF_BRIDGE_DIRECT_HACK
+      // The direct-hacked Sonoff Bridge has one receiver topology. Ignore any
+      // Signal section left in EEPROM by an older generic RFLink build.
+      if (params::sample_rate != DEFAULT_RAWSIGNAL_SAMPLE_RATE) {
+        changesDetected = true;
+        params::sample_rate = DEFAULT_RAWSIGNAL_SAMPLE_RATE;
+      }
+      if (params::min_raw_pulses != MIN_RAW_PULSES) {
+        changesDetected = true;
+        params::min_raw_pulses = MIN_RAW_PULSES;
+      }
+      if (params::seek_timeout != SIGNAL_SEEK_TIMEOUT_MS) {
+        changesDetected = true;
+        params::seek_timeout = SIGNAL_SEEK_TIMEOUT_MS;
+      }
+      if (params::min_preamble != SIGNAL_MIN_PREAMBLE_US) {
+        changesDetected = true;
+        params::min_preamble = SIGNAL_MIN_PREAMBLE_US;
+      }
+      if (params::min_pulse_len != MIN_PULSE_LENGTH_US) {
+        changesDetected = true;
+        params::min_pulse_len = MIN_PULSE_LENGTH_US;
+      }
+      if (params::signal_end_timeout != SIGNAL_END_TIMEOUT_US) {
+        changesDetected = true;
+        params::signal_end_timeout = SIGNAL_END_TIMEOUT_US;
+      }
+      if (params::signal_repeat_time != SIGNAL_REPEAT_TIME_MS) {
+        changesDetected = true;
+        params::signal_repeat_time = SIGNAL_REPEAT_TIME_MS;
+      }
+      if (params::scan_high_time != SCAN_HIGH_TIME_MS) {
+        changesDetected = true;
+        params::scan_high_time = SCAN_HIGH_TIME_MS;
+      }
+      if (params::slicer != Slicer_enum::Default) {
+        changesDetected = true;
+        params::slicer = Slicer_enum::Default;
+      }
+      updateSlicer(params::slicer);
+
+      if (triggerChanges && changesDetected) {
+        Serial.println(F("Sonoff direct receiver settings restored."));
+        if (params::async_mode_enabled && AsyncSignalScanner::isStopped())
+          AsyncSignalScanner::startScanning();
+      }
+      return;
+#endif
       // RawSignal::Multiply is a byte and is used as a divisor in both RX
+      const long configuredSampleRate = item->getLongIntValue();
       // completion paths. Reject values that would truncate to zero or exceed
       // the representation used by the pulse buffer.
       const unsigned short sampleRate =
@@ -1382,6 +1430,10 @@ namespace RFLink
       signal[F("async_receiver_enabled")] = params::async_mode_enabled;
       signal[F("async_receiver_scanning")] = !AsyncSignalScanner::isStopped();
       signal[F("received_signal_count")] = counters::receivedSignalsCount;
+      signal[F("radio_rx_gpio")] = Radio::pins::RX_DATA;
+      signal[F("radio_tx_gpio")] = Radio::pins::TX_DATA;
+      signal[F("radio_rx_power_gpio")] = Radio::pins::RX_NMOS;
+      signal[F("radio_tx_power_gpio")] = Radio::pins::TX_NMOS;
       signal[F("successfully_decoded_count")] = counters::successfullyDecodedSignalsCount;
     }
 
