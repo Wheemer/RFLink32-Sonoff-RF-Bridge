@@ -75,6 +75,27 @@ namespace RFLink { namespace Wifi {
         CachedWifiNetwork *cachedWifiNetworks = nullptr;
         int cachedWifiNetworkCount = 0;
 
+#if defined(RFLINK_SONOFF_BRIDGE_DIRECT_HACK)
+        // GPIO13 is the active-low blue Wi-Fi LED on the direct-modified
+        // Sonoff RF Bridge R2. It is not an RF power-control pin.
+        bool sonoffWifiLedInitialized = false;
+        bool sonoffWifiLedOn = false;
+
+        void updateSonoffWifiLed() {
+          const bool connected = WiFi.isConnected();
+          if(sonoffWifiLedInitialized && sonoffWifiLedOn == connected)
+            return;
+
+          pinMode(RFLINK_SONOFF_BRIDGE_WIFI_LED_PIN, OUTPUT);
+          digitalWrite(
+            RFLINK_SONOFF_BRIDGE_WIFI_LED_PIN,
+            connected ? LOW : HIGH
+          );
+          sonoffWifiLedOn = connected;
+          sonoffWifiLedInitialized = true;
+        }
+#endif
+
         void clearWifiScanCache() {
           delete[] cachedWifiNetworks;
           cachedWifiNetworks = nullptr;
@@ -792,12 +813,18 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
   WiFi.setOutputPower(WIFI_PWR.toInt());
 #endif // ESP
 
+#if defined(RFLINK_SONOFF_BRIDGE_DIRECT_HACK)
+          updateSonoffWifiLed();
+#endif
           start_WIFI();
         }
 
         void mainLoop() {
           processStationDisconnected();
           processStationGotIp();
+#if defined(RFLINK_SONOFF_BRIDGE_DIRECT_HACK)
+          updateSonoffWifiLed();
+#endif
 #if defined(ESP8266) || defined(ESP32)
           if(mdnsStartAfterSetupAccessPointShutdown && WiFi.isConnected() && (WiFi.getMode() & WIFI_AP) == 0) {
             startMdnsDiscovery();
