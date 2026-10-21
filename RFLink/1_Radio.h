@@ -12,11 +12,7 @@
 #include "11_Config.h"
 
 #define TRANSMITTER_STABLE_DELAY_US 500 // 500        // Delay to let the transmitter become stable (Note: Aurel RTX MID needs 500µS/0,5ms).
-#ifdef RFLINK_SONOFF_BRIDGE_RX_PULLUP
-#define PULLUP_RF_RX_DATA true
-#else
 #define PULLUP_RF_RX_DATA false
-#endif // RFLINK_SONOFF_BRIDGE_RX_PULLUP
 
 #undef BUILTIN_LED
 #define BUILTIN_LED 9
@@ -72,8 +68,8 @@
   #ifndef PIN_RF_TX_DATA
     #define PIN_RF_TX_DATA 5 // Data to the 433Mhz transmitter on this pin
   #endif
+#else // it is a ESP8266 D1 Mini like
 
-#else // it's a ESP8266 D1 Mini like
 
   #ifndef PIN_RF_RX_PMOS
     #define PIN_RF_RX_PMOS NOT_A_PIN // High Side P-MOSFET, active on LOW level

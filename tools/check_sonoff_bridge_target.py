@@ -30,17 +30,18 @@ def main() -> None:
         "-D RFLINK_USE_HARDCODED_RADIO_PINS_ONLY",
         "-D RFLINK_NO_RADIOLIB_SUPPORT",
         "-D RFLINK_SONOFF_BRIDGE_CONTINUOUS_RX",
-        "-D RFLINK_SONOFF_BRIDGE_RX_PULLUP",
     ):
         require(platformio, setting)
 
     for setting in (
         "#define PIN_RF_RX_DATA 4",
         "#define PIN_RF_TX_DATA 5",
-        "#ifdef RFLINK_SONOFF_BRIDGE_RX_PULLUP",
-        "#define PULLUP_RF_RX_DATA true",
+        "#define PULLUP_RF_RX_DATA false",
     ):
         require(radio, setting)
+
+    if "RFLINK_SONOFF_BRIDGE_RX_PULLUP" in platformio.read_text(encoding="utf-8"):
+        raise SystemExit("Direct-hacked Sonoff receiver must not enable an ESP8285 pull-up")
 
     require(api, "#define RFLINK_API_PORT 8080")
     require(serial, "#define INPUT_COMMAND_SIZE 2000")
