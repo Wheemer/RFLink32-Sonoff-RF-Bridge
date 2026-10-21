@@ -106,7 +106,12 @@ def parse_rflink_message(message: str) -> dict[str, Any]:
         data["raw_parts"] = parts
 
     protocol_index = 1
-    if len(parts) >= 3 and parts[0].isdigit() and parts[1].isdigit():
+    if (
+        len(parts) >= 3
+        and parts[0] == "20"
+        and len(parts[1]) == 2
+        and all(character in "0123456789abcdefABCDEF" for character in parts[1])
+    ):
         protocol_index = 2
 
     if len(parts) > protocol_index:

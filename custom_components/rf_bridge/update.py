@@ -41,7 +41,9 @@ DOWNLOAD_ROUTE = "/api/rf_bridge/firmware/{token}"
 DOWNLOAD_VIEW_KEY = "firmware_download_view"
 DOWNLOAD_VIEW_DATA_KEY = f"{DOMAIN}_{DOWNLOAD_VIEW_KEY}"
 FIRMWARE_UPDATE_VERIFY_SECONDS = 75
-FIRMWARE_UPDATE_SETTLE_SECONDS = 15
+# OTA stops the bridge API while it writes flash.  A brief grace period lets
+# that handoff begin without adding a fixed 15-second tail after a fast reboot.
+FIRMWARE_UPDATE_SETTLE_SECONDS = 3
 VERSION_CHARACTERS = "0123456789.-_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 

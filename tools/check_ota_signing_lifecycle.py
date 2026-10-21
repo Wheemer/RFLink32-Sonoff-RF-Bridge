@@ -73,8 +73,8 @@ def main() -> None:
         raise SystemExit("Home Assistant OTA reconnect resume hook is missing.")
     if "FIRMWARE_UPDATE_VERIFY_SECONDS = 75" not in update_source:
         raise SystemExit("Home Assistant OTA verification window is too short.")
-    if "FIRMWARE_UPDATE_SETTLE_SECONDS = 15" not in update_source:
-        raise SystemExit("Home Assistant must defer OTA status probes until flashing ends.")
+    if "FIRMWARE_UPDATE_SETTLE_SECONDS = 3" not in update_source:
+        raise SystemExit("Home Assistant must allow a brief OTA handoff before status probes.")
     if "verified = await self._async_wait_for_version(release.version)" not in update_source:
         raise SystemExit("Home Assistant must wait for the verified firmware version.")
     if "self._hub.async_resume_after_firmware_update()" not in update_source:
