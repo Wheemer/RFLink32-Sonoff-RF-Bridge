@@ -30,12 +30,15 @@ def main() -> None:
         "-D RFLINK_USE_HARDCODED_RADIO_PINS_ONLY",
         "-D RFLINK_NO_RADIOLIB_SUPPORT",
         "-D RFLINK_SONOFF_BRIDGE_CONTINUOUS_RX",
+        "-D RFLINK_SONOFF_BRIDGE_RX_PULLUP",
     ):
         require(platformio, setting)
 
     for setting in (
         "#define PIN_RF_RX_DATA 4",
         "#define PIN_RF_TX_DATA 5",
+        "#ifdef RFLINK_SONOFF_BRIDGE_RX_PULLUP",
+        "#define PULLUP_RF_RX_DATA true",
     ):
         require(radio, setting)
 

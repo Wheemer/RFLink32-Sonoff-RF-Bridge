@@ -12,7 +12,11 @@
 #include "11_Config.h"
 
 #define TRANSMITTER_STABLE_DELAY_US 500 // 500        // Delay to let the transmitter become stable (Note: Aurel RTX MID needs 500µS/0,5ms).
-#define PULLUP_RF_RX_DATA false       // false      // Sometimes a pullup in needed on RX data pin
+#ifdef RFLINK_SONOFF_BRIDGE_RX_PULLUP
+#define PULLUP_RF_RX_DATA true
+#else
+#define PULLUP_RF_RX_DATA false
+#endif // RFLINK_SONOFF_BRIDGE_RX_PULLUP
 
 #undef BUILTIN_LED
 #define BUILTIN_LED 9
