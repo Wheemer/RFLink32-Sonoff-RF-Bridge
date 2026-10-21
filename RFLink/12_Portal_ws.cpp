@@ -42,7 +42,8 @@ namespace RFLink { namespace Portal {
           // Only the object metadata needs ArduinoJson storage; keeping a
           // second 2 KB receive buffer here starved TCP allocations.
           static StaticJsonDocument<512> wsMessageDoc;
-          static StaticJsonDocument<1280> wsStatusDoc;
+          // Keep a little headroom for reset postmortem metadata in the initial hello.
+          static StaticJsonDocument<1408> wsStatusDoc;
 
           bool appendJsonText(char *&cursor, size_t &remaining, const char *text) {
             if(text == nullptr)
@@ -285,6 +286,8 @@ namespace RFLink { namespace Portal {
               root[F("id")] = activeJob.requestId;
               root[F("ok")] = activeJob.ok;
               root[F("elapsed_ms")] = activeJob.elapsedMs;
+              if(!activeJob.ok && RFLink::Signal::runtime::txLastError[0] != 0)
+                root[F("message")] = RFLink::Signal::runtime::txLastError;
               JsonObject runtime = root.createNestedObject(F("runtime"));
               writeRuntimeDebugJson(runtime);
             } else if(activeJob.type == WsJobType::Learn) {
@@ -323,6 +326,8 @@ namespace RFLink { namespace Portal {
                 root[F("type")] = F("command_result");
                 root[F("ok")] = ok;
                 root[F("elapsed_ms")] = elapsedMs;
+                if(!ok && RFLink::Signal::runtime::txLastError[0] != 0)
+                  root[F("message")] = RFLink::Signal::runtime::txLastError;
               } else if(type == WsJobType::Learn) {
                 root[F("type")] = F("learn_armed");
                 root[F("cursor")] = RFLink::getRfEventCursor();
@@ -506,11 +511,13 @@ namespace RFLink { namespace Portal {
               // event, but must not trigger a reconnect loop that consumes
               // the ESP8285 heap.
               client->setCloseClientOnQueueFull(false);
+              RFLink::recordRuntimeCheckpoint(RFLink::RuntimeCheckpoint::WebSocketConnect);
               wsSendHello(client);
               return;
             }
             if(type == WS_EVT_DISCONNECT) {
               if(client != nullptr) {
+                RFLink::cancelRawRfLearning(client->id());
                 if(wsInboundActive && wsInboundClientId == client->id()) {
                   wsInboundActive = false;
                   wsInboundClientId = 0;
@@ -579,8 +586,12 @@ namespace RFLink { namespace Portal {
           const uint32_t startedUs = micros();
 
           if(activeJob.type == WsJobType::Command) {
+            // txLastError is retained for diagnostics; clear it before this
+            // command so a generic rejection cannot report an older failure.
+            RFLink::Signal::setTxLastError(nullptr);
             yield();
             ESP.wdtFeed();
+            RFLink::recordRuntimeCheckpoint(RFLink::RuntimeCheckpoint::WebSocketCommand);
             // WebSocket clients send full RFLink lines such as
             // "10;signal;sendRF;{...}". Keep this routed through the top-level
             // RFLink command dispatcher, not the lower-level signal parser.
@@ -589,7 +600,8 @@ namespace RFLink { namespace Portal {
             ESP.wdtFeed();
           } else if(activeJob.type == WsJobType::Learn) {
             // Learn observes the existing receiver; it never changes RX mode.
-            RFLink::armRawRfLearning(activeJob.learnSeconds);
+            RFLink::recordRuntimeCheckpoint(RFLink::RuntimeCheckpoint::WebSocketLearn);
+            RFLink::armRawRfLearning(activeJob.learnSeconds, activeJob.clientId);
             activeJob.ok = true;
           } else if(activeJob.type == WsJobType::Reboot) {
             RFLink::scheduleReboot(5, RFLink::RebootSource::ApiRequest);
@@ -620,11 +632,12 @@ namespace RFLink { namespace Portal {
           apiWebSocket.textAll(wsOutbound);
         }
 
-        void broadcastRawRfEvent(uint32_t sequence, unsigned long eventMillis,
-                                 int pulseCount, byte repeat, byte delay,
+        void sendRawRfEvent(uint32_t clientId, uint32_t sequence, unsigned long eventMillis,
+                            int pulseCount, byte repeat, byte delay,
                                  byte multiply, int rssi, bool pulseCountTrimmed,
                                  const uint16_t *pulses) {
-          if(apiWebSocket.count() == 0 || pulses == nullptr || !apiWebSocket.availableForWriteAll())
+          AsyncWebSocketClient *client = apiWebSocket.client(clientId);
+          if(client == nullptr || pulses == nullptr || !apiWebSocket.availableForWrite(clientId))
             return;
 
           bool canIncludeCommand = pulseCount >= 2;
@@ -634,7 +647,7 @@ namespace RFLink { namespace Portal {
                buildRawRfEventJson(sequence, eventMillis, pulseCount, repeat, delay,
                                    multiply, rssi, true, pulses, false)))
             return;
-          apiWebSocket.textAll(wsOutbound);
+          client->text(wsOutbound);
         }
 
         void cleanupWebSocketClients() {

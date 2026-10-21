@@ -43,7 +43,8 @@ namespace RFLink {
           bool truncated,
           const char *command
         );
-        void broadcastRawRfEvent(
+        void sendRawRfEvent(
+          uint32_t clientId,
           uint32_t sequence,
           unsigned long eventMillis,
           int pulseCount,

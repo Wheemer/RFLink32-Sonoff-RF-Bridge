@@ -66,22 +66,27 @@ namespace RFLink {
     namespace {
 #if defined(ESP8266)
       // RTC user memory survives a software restart without writing flash. The
-      // ESP8266 OTA implementation reserves blocks 0-31, so use its final two
-      // blocks (496-503) for this 8-byte diagnostic breadcrumb.
+      // ESP8266 OTA reserves RTC blocks 0-31. Keep this 16-byte record in
+      // blocks 124-127 (496-511), outside the OTA-owned range.
       constexpr uint32_t REBOOT_BREADCRUMB_MAGIC = 0x52464252UL;
       constexpr uint32_t REBOOT_BREADCRUMB_RTC_BLOCK = 124;
 
       struct alignas(4) RebootBreadcrumb {
         uint32_t magic;
         uint32_t source;
+        uint32_t checkpoint;
+        uint32_t heapFree;
       };
 
-      static_assert(sizeof(RebootBreadcrumb) == 8, "RTC reboot breadcrumb size");
+      static_assert(sizeof(RebootBreadcrumb) == 16, "RTC reboot breadcrumb size");
 
       RebootSource rebootSourceAtBoot = RebootSource::Unknown;
+      RebootBreadcrumb breadcrumbAtBoot = {};
+      RuntimeCheckpoint runtimeCheckpoint = RuntimeCheckpoint::Boot;
+      uint32_t runtimeCheckpointHeapFree = 0;
 
       void loadRebootSourceAtBoot() {
-        RebootBreadcrumb breadcrumb = {0, 0};
+        RebootBreadcrumb breadcrumb = {};
         if (ESP.rtcUserMemoryRead(
               REBOOT_BREADCRUMB_RTC_BLOCK,
               reinterpret_cast<uint32_t *>(&breadcrumb),
@@ -97,13 +102,21 @@ namespace RFLink {
             default:
               break;
           }
+          breadcrumbAtBoot = breadcrumb;
         }
+      }
 
-        RebootBreadcrumb cleared = {0, 0};
+      void writeRuntimeBreadcrumb(RebootSource source) {
+        RebootBreadcrumb breadcrumb = {
+          REBOOT_BREADCRUMB_MAGIC,
+          static_cast<uint32_t>(source),
+          static_cast<uint32_t>(runtimeCheckpoint),
+          runtimeCheckpointHeapFree,
+        };
         ESP.rtcUserMemoryWrite(
           REBOOT_BREADCRUMB_RTC_BLOCK,
-          reinterpret_cast<uint32_t *>(&cleared),
-          sizeof(cleared)
+          reinterpret_cast<uint32_t *>(&breadcrumb),
+          sizeof(breadcrumb)
         );
       }
 #endif
@@ -111,6 +124,7 @@ namespace RFLink {
       uint32_t rfEventSequence = 0;
       bool rawRfLearningArmed = false;
       unsigned long rawRfLearningExpiresAt = 0;
+      uint32_t rawRfLearningClientId = 0;
 
       bool isRfEventMessage(const char *message)
       {
@@ -152,6 +166,7 @@ namespace RFLink {
 #endif
 
       RFLink::UpdateSecurity::setup();
+      recordRuntimeCheckpoint(RuntimeCheckpoint::Boot);
 
       if (gettimeofday(&timeAtBoot, NULL) != 0) {
         Serial.println(F("Failed to obtain time"));
@@ -280,9 +295,39 @@ namespace RFLink {
       return rfEventSequence;
     }
 
-    void armRawRfLearning(unsigned int seconds) {
+    void recordRuntimeCheckpoint(RuntimeCheckpoint checkpoint) {
+#if defined(ESP8266)
+      runtimeCheckpoint = checkpoint;
+      runtimeCheckpointHeapFree = ESP.getFreeHeap();
+      writeRuntimeBreadcrumb(RebootSource::Unknown);
+#else
+      (void)checkpoint;
+#endif
+    }
+
+    void writeRuntimeCheckpointJson(JsonObject &output) {
+#if defined(ESP8266)
+      if (breadcrumbAtBoot.magic != REBOOT_BREADCRUMB_MAGIC)
+        return;
+      output["previous_runtime_checkpoint"] = breadcrumbAtBoot.checkpoint;
+      output["previous_runtime_heap_free"] = breadcrumbAtBoot.heapFree;
+#else
+      (void)output;
+#endif
+    }
+
+    void armRawRfLearning(unsigned int seconds, uint32_t clientId) {
       rawRfLearningArmed = true;
+      rawRfLearningClientId = clientId;
       rawRfLearningExpiresAt = millis() + ((unsigned long) seconds * 1000UL);
+    }
+
+    void cancelRawRfLearning(uint32_t clientId) {
+      if(rawRfLearningArmed && rawRfLearningClientId == clientId) {
+        rawRfLearningArmed = false;
+        rawRfLearningExpiresAt = 0;
+        rawRfLearningClientId = 0;
+      }
     }
 
     void maintainRawRfLearning() {
@@ -291,6 +336,7 @@ namespace RFLink {
       if((long)(millis() - rawRfLearningExpiresAt) >= 0) {
         rawRfLearningArmed = false;
         rawRfLearningExpiresAt = 0;
+        rawRfLearningClientId = 0;
       }
     }
 
@@ -307,6 +353,8 @@ namespace RFLink {
         return;
       if(rawRfLearningExpiresAt != 0 && (long)(millis() - rawRfLearningExpiresAt) >= 0) {
         rawRfLearningArmed = false;
+        rawRfLearningExpiresAt = 0;
+        rawRfLearningClientId = 0;
         return;
       }
       if(number <= 0 || pulses == nullptr)
@@ -317,11 +365,16 @@ namespace RFLink {
         pulseCountTrimmed = true;
       }
 
+      const uint32_t learningClientId = rawRfLearningClientId;
       rawRfLearningArmed = false;
       rawRfLearningExpiresAt = 0;
+      rawRfLearningClientId = 0;
+
+      recordRuntimeCheckpoint(RuntimeCheckpoint::RawRfCaptured);
 
 #ifndef RFLINK_PORTAL_DISABLED
-      RFLink::Portal::broadcastRawRfEvent(
+      RFLink::Portal::sendRawRfEvent(
+        learningClientId,
         ++rfEventSequence,
         millis(),
         number,
@@ -332,6 +385,7 @@ namespace RFLink {
         pulseCountTrimmed,
         pulses
       );
+      recordRuntimeCheckpoint(RuntimeCheckpoint::RawRfDelivered);
 #endif
     }
 
@@ -553,15 +607,7 @@ namespace RFLink {
 
     void markRebootSource(RebootSource source) {
 #if defined(ESP8266)
-      RebootBreadcrumb breadcrumb = {
-        REBOOT_BREADCRUMB_MAGIC,
-        static_cast<uint32_t>(source),
-      };
-      ESP.rtcUserMemoryWrite(
-        REBOOT_BREADCRUMB_RTC_BLOCK,
-        reinterpret_cast<uint32_t *>(&breadcrumb),
-        sizeof(breadcrumb)
-      );
+      writeRuntimeBreadcrumb(source);
 #else
       (void)source;
 #endif
@@ -659,6 +705,7 @@ namespace RFLink {
         isSoftwareRestart(resetInfo->reason)
           ? lastRequestedRebootSource()
           : "unknown";
+      writeRuntimeCheckpointJson(output);
 #endif
 #ifdef ESP32
       output["reset_reason"] = (int) esp_reset_reason();

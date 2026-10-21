@@ -98,7 +98,8 @@ namespace RFLink {
     //void sendRawPrintf_P(PGM_P, ...);
 
     void getStatusJsonString(JsonObject &output);
-    void armRawRfLearning(unsigned int seconds);
+    void armRawRfLearning(unsigned int seconds, uint32_t clientId);
+    void cancelRawRfLearning(uint32_t clientId);
     void maintainRawRfLearning();
     void recordRawRfEvent(
       int number,
@@ -110,6 +111,20 @@ namespace RFLink {
       const uint16_t *pulses
     );
     uint32_t getRfEventCursor();
+
+    // Updated only at externally visible API/RF boundaries. The last value is
+    // retained in RTC user memory across a reset without flash log churn.
+    enum class RuntimeCheckpoint : uint8_t {
+      Boot = 0,
+      WebSocketConnect,
+      WebSocketLearn,
+      RawRfCaptured,
+      RawRfDelivered,
+      WebSocketCommand,
+    };
+
+    void recordRuntimeCheckpoint(RuntimeCheckpoint checkpoint);
+    void writeRuntimeCheckpointJson(JsonObject &output);
 
     enum class RebootSource : uint8_t {
       Unknown = 0,

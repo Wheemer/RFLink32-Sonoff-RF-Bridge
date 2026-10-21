@@ -135,6 +135,7 @@ namespace RFLink {
     }
 
     bool updateSlicer(Slicer_enum newSlicer);
+    void setTxLastError(const char *message);
 
     namespace AsyncSignalScanner {
       // These values cross the GPIO ISR/main-loop boundary.
