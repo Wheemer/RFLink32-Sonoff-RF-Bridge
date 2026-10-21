@@ -64,8 +64,7 @@ def main() -> None:
         "runtime::txLastElapsedMs = (micros() - started_us) / 1000UL;",
         "uint64_t estimated_us = 0;",
         "if(estimated_ms > 120000ULL)",
-        "const bool firstPulse = RawSignal.Number == 0;",
-        "if (firstPulse && pulseLength_us < SIGNAL_MIN_PREAMBLE_US)",
+        "RawSignal.Number++;\n\n        if (RawSignal.Number >= RAW_BUFFER_SIZE)",
         "(long)(micros() - AsyncSignalScanner::nextPulseTimeoutTime_us) >= 0",
         "stopScanning();\n        params::async_mode_enabled = false;",
         "if (!scanningStopped)\n          return;",
@@ -75,6 +74,8 @@ def main() -> None:
     signal_source = signal.read_text(encoding="utf-8")
     if "static unsigned long lastChangedState_us" in signal_source:
         raise SystemExit("Async scanner must reset the timestamp used by its ISR")
+    if "firstPulse && pulseLength_us < SIGNAL_MIN_PREAMBLE_US" in signal_source:
+        raise SystemExit("Sonoff async capture must retain upstream first-pulse semantics")
     for required in (
         "volatile unsigned long int lastChangedState_us = 0;",
         "volatile unsigned long int nextPulseTimeoutTime_us = 0;",

@@ -826,16 +826,6 @@ namespace RFLink
           return;
         }
 
-        const bool firstPulse = RawSignal.Number == 0;
-
-        if (firstPulse && pulseLength_us < SIGNAL_MIN_PREAMBLE_US)
-        {                              // too short preamble, let's drop it
-          nextPulseTimeoutTime_us = 0; // stop watching for a timeout
-          RawSignal.Number = 0;
-          RawSignal.Time = 0;
-          return;
-        }
-
         RawSignal.Number++;
 
         if (RawSignal.Number >= RAW_BUFFER_SIZE)
