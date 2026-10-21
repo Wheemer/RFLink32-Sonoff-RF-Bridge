@@ -23,41 +23,18 @@ jobs:
           python-version: "3.13"
 
       - name: Install validation dependencies
-        run: python -m pip install --upgrade platformio ruff homeassistant pyyaml
+        run: python -m pip install --upgrade platformio ruff
 
-      - name: Validate Home Assistant integration
+      - name: Validate firmware source
         run: |
           python tools/check_api_only_transport.py
-          python tools/check_firmware_download_view.py
           python tools/check_listener_topology.py
-          python tools/check_rf_bridge_websocket_reconnect.py
-          python tools/check_rf_bridge_entity_availability.py
           python tools/check_sonoff_bridge_target.py
           python tools/check_ota_signing_lifecycle.py
-          python tools/check_ota_update_progress.py
           python tools/generate_wifi_setup_asset.py RFLink/WifiSetupPage.html RFLink/WifiSetupPage_gz.h
           python tools/check_wifi_setup_page.py RFLink/12_Portal.cpp RFLink/WifiSetupPage.html RFLink/WifiSetupPage_gz.h RFLink/10_Wifi.cpp
-          ruff check custom_components/rf_bridge tools/check_api_only_transport.py tools/check_firmware_download_view.py tools/check_listener_topology.py tools/check_ota_signing_lifecycle.py tools/check_ota_update_progress.py tools/check_rf_bridge_websocket_reconnect.py tools/check_rf_bridge_entity_availability.py tools/check_sonoff_bridge_ota_layout.py tools/check_sonoff_bridge_target.py tools/check_wifi_setup_page.py tools/generate_wifi_setup_asset.py tools/package_sonoff_bridge_update.py tools/validate_ota_layout.py
-          python -m compileall -q custom_components/rf_bridge tools
-          python - <<'PY'
-          import json
-          import yaml
-          for path in (
-              "custom_components/rf_bridge/manifest.json",
-              "custom_components/rf_bridge/strings.json",
-              "custom_components/rf_bridge/translations/en.json",
-          ):
-              with open(path, encoding="utf-8") as handle:
-                  json.load(handle)
-          with open("custom_components/rf_bridge/services.yaml", encoding="utf-8") as handle:
-              yaml.safe_load(handle)
-          import custom_components.rf_bridge
-          import custom_components.rf_bridge.button
-          import custom_components.rf_bridge.config_flow
-          import custom_components.rf_bridge.event
-          import custom_components.rf_bridge.sensor
-          import custom_components.rf_bridge.update
-          PY
+          ruff check tools
+          python -m compileall -q tools
 
       - name: Build the modified Sonoff RF Bridge firmware
         run: |

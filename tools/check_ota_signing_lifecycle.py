@@ -55,41 +55,6 @@ def main() -> None:
     update_call = source.index("fetchAndApplyUpdate(", update_handoff)
     if "RFLink::Portal::prepareForUpdate();" not in source[update_handoff:update_call]:
         raise SystemExit("OTA update must stop the API server before constructing its HTTP client.")
-    hub_source = Path("custom_components/rf_bridge/__init__.py").read_text(
-        encoding="utf-8"
-    )
-    update_source = Path("custom_components/rf_bridge/update.py").read_text(
-        encoding="utf-8"
-    )
-    if "FIRMWARE_UPDATE_QUIET_SECONDS = 75" not in hub_source:
-        raise SystemExit("Home Assistant must keep the persistent socket quiet during OTA verification.")
-    if "self._ota_quiet_until" not in hub_source:
-        raise SystemExit("Home Assistant OTA quiet-window state is missing.")
-    if "self._ota_quiet_event = asyncio.Event()" not in hub_source:
-        raise SystemExit("Home Assistant OTA quiet-window wake event is missing.")
-    if "await asyncio.wait_for(" not in hub_source or "self._ota_quiet_event.wait()" not in hub_source:
-        raise SystemExit("Home Assistant OTA quiet window cannot be ended after verification.")
-    if "def async_resume_after_firmware_update(self)" not in hub_source:
-        raise SystemExit("Home Assistant OTA reconnect resume hook is missing.")
-    if "FIRMWARE_UPDATE_VERIFY_SECONDS = 75" not in update_source:
-        raise SystemExit("Home Assistant OTA verification window is too short.")
-    if "FIRMWARE_UPDATE_SETTLE_SECONDS = 3" not in update_source:
-        raise SystemExit("Home Assistant must allow a brief OTA handoff before status probes.")
-    if "verified = await self._async_wait_for_version(release.version)" not in update_source:
-        raise SystemExit("Home Assistant must wait for the verified firmware version.")
-    if "self._hub.async_resume_after_firmware_update()" not in update_source:
-        raise SystemExit("Home Assistant must resume its socket after OTA verification.")
-    for required in (
-        "def _set_install_progress(self, percentage: int)",
-        "self._attr_in_progress = True",
-        "self._attr_update_percentage = percentage",
-        "self._set_install_progress(35)",
-        "self._set_install_progress(50)",
-        "self._set_install_progress(100)",
-        "self._clear_install_progress()",
-    ):
-        if required not in update_source:
-            raise SystemExit(f"Home Assistant OTA progress reporting is incomplete: {required}")
     print("ota_signing_lifecycle=filesystem_and_api_handoff_verified")
 
 

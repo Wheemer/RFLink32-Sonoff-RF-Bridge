@@ -8,7 +8,6 @@ RETIRED_PATHS = (
     "RFLink/6_Credentials.h",
     "RFLink/6_MQTT.cpp",
     "RFLink/6_MQTT.h",
-    "custom_components/rf_bridge_to_mqtt",
 )
 
 RETIRED_TOKENS = (
@@ -25,7 +24,6 @@ RETIRED_TOKENS = (
 SOURCE_PATHS = (
     ROOT / "RFLink",
     ROOT / "platformio.ini",
-    ROOT / "custom_components" / "rf_bridge",
 )
 
 SOURCE_SUFFIXES = {".c", ".cpp", ".h", ".ini", ".json", ".py"}

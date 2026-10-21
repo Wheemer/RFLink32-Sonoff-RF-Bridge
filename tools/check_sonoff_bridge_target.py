@@ -23,8 +23,6 @@ def main() -> None:
     core = ROOT / "RFLink" / "RFLink.cpp"
     update = ROOT / "RFLink" / "13_Update.cpp"
     serial = ROOT / "RFLink" / "3_Serial.h"
-    integration = ROOT / "custom_components" / "rf_bridge" / "__init__.py"
-    integration_update = ROOT / "custom_components" / "rf_bridge" / "update.py"
 
     for setting in (
         "[env:sonoff_bridge]",
@@ -44,13 +42,6 @@ def main() -> None:
     require(serial, "#define INPUT_COMMAND_SIZE 2000")
     require(websocket, "char command[INPUT_COMMAND_SIZE] = {0};")
     require(websocket, "if(info->index + len >= sizeof(activeJob.command))")
-    for setting in (
-        "INPUT_COMMAND_SIZE = 2000",
-        "WS_INBOUND_SIZE = INPUT_COMMAND_SIZE",
-        "if len(command) >= INPUT_COMMAND_SIZE - 1:",
-        "if ws_envelope_len >= WS_INBOUND_SIZE:",
-    ):
-        require(integration, setting)
     require(wifi, "volatile bool stationGotIpPending = false;")
     require(wifi, "volatile bool stationDisconnectedPending = false;")
     require(wifi, "void processStationGotIp()")
@@ -129,14 +120,5 @@ def main() -> None:
         'output["update_last_attempt"] = RFLink::UpdateSecurity::lastAttempt();',
     ):
         require(core, setting)
-    require(integration, "async def async_probe_status(self) -> dict[str, Any]:")
-    require(integration, "self.available = True")
-    if "self._mark_reachable()" in integration.read_text(encoding="utf-8").split(
-        "async def async_probe_status", 1
-    )[1].split("async def", 1)[0]:
-        raise SystemExit("One-shot OTA probes must not claim the persistent WebSocket is connected")
-    require(integration_update, "status = await self._hub.async_probe_status()")
-
-
 if __name__ == "__main__":
     main()
