@@ -588,7 +588,7 @@ namespace RFLink { namespace Portal {
             yield();
             ESP.wdtFeed();
           } else if(activeJob.type == WsJobType::Learn) {
-            RFLink::Signal::AsyncSignalScanner::enableAsyncReceiver();
+            // Learn observes the existing receiver; it never changes RX mode.
             RFLink::armRawRfLearning(activeJob.learnSeconds);
             activeJob.ok = true;
           } else if(activeJob.type == WsJobType::Reboot) {

@@ -137,9 +137,10 @@ namespace RFLink {
     bool updateSlicer(Slicer_enum newSlicer);
 
     namespace AsyncSignalScanner {
-      extern unsigned long int lastChangedState_us;     // time last state change occured
-      extern unsigned long int nextPulseTimeoutTime_us; // when current pulse will timeout
-      extern bool scanningStopped;                      // 
+      // These values cross the GPIO ISR/main-loop boundary.
+      extern volatile unsigned long int lastChangedState_us;
+      extern volatile unsigned long int nextPulseTimeoutTime_us;
+      extern volatile bool scanningStopped;
 
       void enableAsyncReceiver();
       void disableAsyncReceiver();

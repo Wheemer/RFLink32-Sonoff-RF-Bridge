@@ -669,6 +669,7 @@ namespace RFLink {
       output["hardware"] = F(RFLINK_HARDWARE_NAME);
       output["rf_event_cursor"] = getRfEventCursor();
       output["raw_learning_armed"] = rawRfLearningArmed;
+      RFLink::Signal::getStatusJsonString(output);
       output["update_pending"] = RFLink::UpdateSecurity::isPending();
       output["update_signing_key_id"] = RFLink::UpdateSecurity::signingKeyId();
       output["update_last_result"] = RFLink::UpdateSecurity::lastResult();

@@ -35,9 +35,9 @@
 #define DEFAULT_WIFI_CLIENT_HOSTNAME "RFLink32"
 #endif
 
-#define SERIAL_ENABLED // Send RFLink messages over Serial
-                          // dont forget to set the URL in Crendentials.h
-
+// The modified Sonoff bridge uses its local API/WebSocket transport only.
+ // Keep the ESP bootloader's UART flashing path; this removes RFLink's legacy
+ // runtime serial command transport.
 //#define RFLINK_PORTAL_DISABLED    // to disable Portal/Web UI
 
 #if (defined(ESP32) || defined(ESP8266))

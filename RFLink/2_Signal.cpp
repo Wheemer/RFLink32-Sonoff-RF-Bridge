@@ -97,7 +97,9 @@ namespace RFLink
     const char json_name_slicer[] = "slicer";
 
     Config::ConfigItem configItems[] = {
+#ifndef RFLINK_SONOFF_BRIDGE_CONTINUOUS_RX
             Config::ConfigItem(json_name_async_mode_enabled, Config::SectionId::Signal_id, true, paramsUpdatedCallback),
+#endif
             Config::ConfigItem(json_name_sample_rate, Config::SectionId::Signal_id, DEFAULT_RAWSIGNAL_SAMPLE_RATE, paramsUpdatedCallback),
             Config::ConfigItem(json_name_min_raw_pulses, Config::SectionId::Signal_id, MIN_RAW_PULSES, paramsUpdatedCallback),
             Config::ConfigItem(json_name_seek_timeout, Config::SectionId::Signal_id, SIGNAL_SEEK_TIMEOUT_MS, paramsUpdatedCallback),
@@ -122,12 +124,21 @@ namespace RFLink
       Config::ConfigItem *item;
       bool changesDetected = false;
 
+#ifdef RFLINK_SONOFF_BRIDGE_CONTINUOUS_RX
+      // The modified Sonoff Bridge has one direct receiver. Normal decoding
+      // and learning share this permanently active asynchronous scanner.
+      if (!params::async_mode_enabled) {
+        changesDetected = true;
+        params::async_mode_enabled = true;
+      }
+#else
       item = Config::findConfigItem(json_name_async_mode_enabled, Config::SectionId::Signal_id);
       if (item->getBoolValue() != params::async_mode_enabled)
       {
         changesDetected = true;
         params::async_mode_enabled = item->getBoolValue();
       }
+#endif
 
       item = Config::findConfigItem(json_name_sample_rate, Config::SectionId::Signal_id);
       const long configuredSampleRate = item->getLongIntValue();
@@ -239,7 +250,8 @@ namespace RFLink
     void setup()
     {
       params::async_mode_enabled = false;
-      refreshParametersFromConfig();
+      // Radio_RX powers the receiver before it attaches GPIO4's interrupt.
+      refreshParametersFromConfig(false);
     }
 
     boolean FetchSignal_sync()
@@ -692,6 +704,9 @@ namespace RFLink
       // The GPIO ISR only marks a complete frame. Detach it here, in normal
       // cooperative code, before a decoder reads the shared pulse buffer.
       AsyncSignalScanner::stopScanning();
+      // Keep wall-clock work out of the ISR. Time is diagnostic metadata, not
+      // part of waveform capture.
+      RawSignal.Time = millis();
 
       counters::receivedSignalsCount++; // we have a signal, let's increment counters
 
@@ -717,9 +732,9 @@ namespace RFLink
 
     namespace AsyncSignalScanner
     {
-      unsigned long int lastChangedState_us = 0;
-      unsigned long int nextPulseTimeoutTime_us = 0;
-      bool scanningStopped = true;
+      volatile unsigned long int lastChangedState_us = 0;
+      volatile unsigned long int nextPulseTimeoutTime_us = 0;
+      volatile bool scanningStopped = true;
 
       void enableAsyncReceiver()
       {
@@ -787,7 +802,8 @@ namespace RFLink
           if (pinState != 1) // if we get 0 here it means that we are in the middle of a signal, let's forget about it
             return;
 
-          RawSignal.Time = millis(); // record when this signal started
+          // Time is set in ScanEvent after the ISR has detached.
+          RawSignal.Time = 1;
           RawSignal.Multiply = Signal::params::sample_rate;
           nextPulseTimeoutTime_us = changeTime_us + params::signal_end_timeout;
 
@@ -1373,6 +1389,8 @@ namespace RFLink
     void getStatusJsonString(JsonObject &output)
     {
       auto &&signal = output.createNestedObject("signal");
+      signal[F("async_receiver_enabled")] = params::async_mode_enabled;
+      signal[F("async_receiver_scanning")] = !AsyncSignalScanner::isStopped();
       signal[F("received_signal_count")] = counters::receivedSignalsCount;
       signal[F("successfully_decoded_count")] = counters::successfullyDecodedSignalsCount;
     }

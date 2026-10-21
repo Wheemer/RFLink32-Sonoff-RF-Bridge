@@ -29,6 +29,7 @@ def main() -> None:
         "-D TARGET_BOARD_ESP8285",
         "-D RFLINK_USE_HARDCODED_RADIO_PINS_ONLY",
         "-D RFLINK_NO_RADIOLIB_SUPPORT",
+        "-D RFLINK_SONOFF_BRIDGE_CONTINUOUS_RX",
     ):
         require(platformio, setting)
 
@@ -40,6 +41,8 @@ def main() -> None:
 
     require(api, "#define RFLINK_API_PORT 8080")
     require(serial, "#define INPUT_COMMAND_SIZE 2000")
+    if "#define SERIAL_ENABLED" in api.read_text(encoding="utf-8"):
+        raise SystemExit("Sonoff target must not compile the retired runtime serial transport")
     require(websocket, "char command[INPUT_COMMAND_SIZE] = {0};")
     require(websocket, "if(info->index + len >= sizeof(activeJob.command))")
     require(wifi, "volatile bool stationGotIpPending = false;")
@@ -69,8 +72,21 @@ def main() -> None:
     ):
         require(signal, call)
 
-    if "static unsigned long lastChangedState_us" in signal.read_text(encoding="utf-8"):
+    signal_source = signal.read_text(encoding="utf-8")
+    if "static unsigned long lastChangedState_us" in signal_source:
         raise SystemExit("Async scanner must reset the timestamp used by its ISR")
+    for required in (
+        "volatile unsigned long int lastChangedState_us = 0;",
+        "volatile unsigned long int nextPulseTimeoutTime_us = 0;",
+        "volatile bool scanningStopped = true;",
+        "RawSignal.Time = 1;",
+        "RawSignal.Time = millis();",
+    ):
+        require(signal, required)
+    isr_start = signal_source.index("void IRAM_ATTR RX_pin_changed_state()")
+    isr_end = signal_source.index("void onPulseTimerTimeout()", isr_start)
+    if "millis()" in signal_source[isr_start:isr_end]:
+        raise SystemExit("GPIO ISR must not call millis()")
 
     display_source = display.read_text(encoding="utf-8")
     if "strcat(pbuffer" in display_source:
@@ -90,6 +106,14 @@ def main() -> None:
         raise SystemExit("WebSocket command telemetry must not allocate reset-reason Strings")
     require(core, "const __FlashStringHelper *resetReasonText(uint32_t reason)")
     require(core, "const rst_info *resetInfo = ESP.getResetInfoPtr();")
+    require(core, "RFLink::Signal::getStatusJsonString(output);")
+    require(signal, "#ifdef RFLINK_SONOFF_BRIDGE_CONTINUOUS_RX")
+    require(signal, "params::async_mode_enabled = true;")
+    require(signal, "refreshParametersFromConfig(false);")
+    require(signal, 'signal[F("async_receiver_enabled")] = params::async_mode_enabled;')
+    require(signal, 'signal[F("async_receiver_scanning")] = !AsyncSignalScanner::isStopped();')
+    if "RFLink::Signal::AsyncSignalScanner::enableAsyncReceiver();\n            RFLink::armRawRfLearning" in websocket.read_text(encoding="utf-8"):
+        raise SystemExit("Learn must observe the continuous receiver, not enable it")
 
     core_source = core.read_text(encoding="utf-8")
     update_source = update.read_text(encoding="utf-8")
