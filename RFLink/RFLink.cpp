@@ -70,49 +70,79 @@ namespace RFLink {
       // blocks 124-127 (496-511), outside the OTA-owned range.
       constexpr uint32_t REBOOT_BREADCRUMB_MAGIC = 0x52464252UL;
       constexpr uint32_t REBOOT_BREADCRUMB_RTC_BLOCK = 124;
+      constexpr uint8_t REBOOT_BREADCRUMB_SCHEMA = 1;
+      constexpr uint32_t REBOOT_BREADCRUMB_CHECK = 0x5A4C3E19UL;
 
       struct alignas(4) RebootBreadcrumb {
         uint32_t magic;
-        uint32_t source;
-        uint32_t checkpoint;
+        uint32_t metadata;
         uint32_t heapFree;
+        uint32_t checksum;
       };
 
       static_assert(sizeof(RebootBreadcrumb) == 16, "RTC reboot breadcrumb size");
 
       RebootSource rebootSourceAtBoot = RebootSource::Unknown;
       RebootBreadcrumb breadcrumbAtBoot = {};
+      bool hasRuntimeBreadcrumbAtBoot = false;
       RuntimeCheckpoint runtimeCheckpoint = RuntimeCheckpoint::Boot;
       uint32_t runtimeCheckpointHeapFree = 0;
 
+      uint32_t breadcrumbChecksum(const RebootBreadcrumb &breadcrumb) {
+        return breadcrumb.magic ^ breadcrumb.metadata ^ breadcrumb.heapFree ^
+               REBOOT_BREADCRUMB_CHECK;
+      }
+
+      uint32_t breadcrumbMetadata(RebootSource source, RuntimeCheckpoint checkpoint) {
+        return (static_cast<uint32_t>(REBOOT_BREADCRUMB_SCHEMA) << 24) |
+               (static_cast<uint32_t>(source) << 16) |
+               (static_cast<uint32_t>(checkpoint) << 8);
+      }
+
       void loadRebootSourceAtBoot() {
         RebootBreadcrumb breadcrumb = {};
-        if (ESP.rtcUserMemoryRead(
+        if (!ESP.rtcUserMemoryRead(
               REBOOT_BREADCRUMB_RTC_BLOCK,
               reinterpret_cast<uint32_t *>(&breadcrumb),
               sizeof(breadcrumb)
-            ) && breadcrumb.magic == REBOOT_BREADCRUMB_MAGIC) {
-          switch (static_cast<RebootSource>(breadcrumb.source)) {
-            case RebootSource::LegacyCommand:
-            case RebootSource::ApiRequest:
-            case RebootSource::SignedUpdate:
-              rebootSourceAtBoot = static_cast<RebootSource>(breadcrumb.source);
-              break;
-            case RebootSource::Unknown:
-            default:
-              break;
-          }
+            ) || breadcrumb.magic != REBOOT_BREADCRUMB_MAGIC)
+          return;
+
+        const uint8_t schema = static_cast<uint8_t>(breadcrumb.metadata >> 24);
+        uint32_t source = 0;
+        if (schema == REBOOT_BREADCRUMB_SCHEMA &&
+            breadcrumb.checksum == breadcrumbChecksum(breadcrumb)) {
+          source = (breadcrumb.metadata >> 16) & 0xFF;
           breadcrumbAtBoot = breadcrumb;
+          hasRuntimeBreadcrumbAtBoot = true;
+        } else if (breadcrumb.metadata <= static_cast<uint32_t>(RebootSource::SignedUpdate)) {
+          // Firmware before schema 1 recorded only magic and reboot source.
+          // Its remaining RTC bytes are uninitialized, so never expose them.
+          source = breadcrumb.metadata;
+        } else {
+          return;
+        }
+
+        switch (static_cast<RebootSource>(source)) {
+          case RebootSource::LegacyCommand:
+          case RebootSource::ApiRequest:
+          case RebootSource::SignedUpdate:
+            rebootSourceAtBoot = static_cast<RebootSource>(source);
+            break;
+          case RebootSource::Unknown:
+          default:
+            break;
         }
       }
 
       void writeRuntimeBreadcrumb(RebootSource source) {
         RebootBreadcrumb breadcrumb = {
           REBOOT_BREADCRUMB_MAGIC,
-          static_cast<uint32_t>(source),
-          static_cast<uint32_t>(runtimeCheckpoint),
+          breadcrumbMetadata(source, runtimeCheckpoint),
           runtimeCheckpointHeapFree,
+          0,
         };
+        breadcrumb.checksum = breadcrumbChecksum(breadcrumb);
         ESP.rtcUserMemoryWrite(
           REBOOT_BREADCRUMB_RTC_BLOCK,
           reinterpret_cast<uint32_t *>(&breadcrumb),
@@ -307,9 +337,10 @@ namespace RFLink {
 
     void writeRuntimeCheckpointJson(JsonObject &output) {
 #if defined(ESP8266)
-      if (breadcrumbAtBoot.magic != REBOOT_BREADCRUMB_MAGIC)
+      if (!hasRuntimeBreadcrumbAtBoot)
         return;
-      output["previous_runtime_checkpoint"] = breadcrumbAtBoot.checkpoint;
+      output["previous_runtime_checkpoint"] =
+        (breadcrumbAtBoot.metadata >> 8) & 0xFF;
       output["previous_runtime_heap_free"] = breadcrumbAtBoot.heapFree;
 #else
       (void)output;
