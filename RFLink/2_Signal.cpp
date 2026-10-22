@@ -841,6 +841,7 @@ namespace RFLink
           nextPulseTimeoutTime_us = 0; // stop watching for a timeout
           RawSignal.Number = 0;
           RawSignal.Time = 0;
+          return;
         }
 
         int pinState = digitalRead(Radio::pins::RX_DATA);

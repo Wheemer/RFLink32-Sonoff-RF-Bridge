@@ -43,30 +43,7 @@
 #define PLUGIN_017 // RTS
 #define PLUGIN_016 // Silvercrest
 #define PLUGIN_018 // Louvolite
-// -------------------
-// Weather sensors
-// -------------------
-#define PLUGIN_029 // Alecto V2 (WS3000/DWK2012) 434 MHz.
-#define PLUGIN_030 // Alecto V1 (WS3500) 434 MHz.
-#define PLUGIN_031 // Alecto V3 (WS1100/WS1200/WSD-19) 433.9 MHz.
-#define PLUGIN_032 // Alecto V4
-#define PLUGIN_033 // Conrad Pool Thermometer
-#define PLUGIN_034 // Cresta
-#define PLUGIN_035 // Imagintronix
-#define PLUGIN_036 // F007_TH
-#define PLUGIN_037 // Accurite 986 Thermometer
-#define PLUGIN_040 // Mebus
-#define PLUGIN_041 // LaCrosse v3 ws7000
-#define PLUGIN_042 // UPM/Esic
-#define PLUGIN_043 // LaCrosse v1
-#define PLUGIN_044 // Auriol v3
-#define PLUGIN_045 // Auriol
-#define PLUGIN_046 // Auriol v2 / Xiron
-#define PLUGIN_047 // Auriol v4
-#define PLUGIN_048 // Oregon Weather
-#define PLUGIN_049 // Lacrosse TX141
-#define PLUGIN_050 // FineOffset WH2 / ClimeMet CM9088 Temperature/Humidity
-#define PLUGIN_051 // Hyundai WS Senzor 77(TH) Temperature/Humidity 433.92 MHz
+// Environmental sensor decoders are intentionally excluded from this command-focused build.
 // -------------------
 // Motion Sensors, include when needed
 // -------------------
@@ -101,8 +78,8 @@
 // -------------------
 // -------------------
 // Housekeeping
+// Unknown packets pass directly to the WebSocket learn workflow.
 // -------------------
-#define PLUGIN_254 // Debug to show unsupported packets
 // ****************************************************************************************************************************************
 // RFLink List of Plugins that have TRANSMIT functionality
 // ****************************************************************************************************************************************
