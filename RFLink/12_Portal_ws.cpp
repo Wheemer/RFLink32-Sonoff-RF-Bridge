@@ -38,10 +38,17 @@ namespace RFLink { namespace Portal {
           // activeJob first, then set it so the main loop cannot cache an
           // earlier false value and strand a command indefinitely.
           volatile bool jobInProgress = false;
+          bool jobExecuting = false;
 
           static char wsOutbound[2300];
+          static char *pendingLearnEvent = nullptr;
+          static uint32_t pendingLearnSequence = 0;
           static bool wsInboundActive = false;
           static uint32_t wsInboundClientId = 0;
+          static unsigned long wsInboundStartedAt = 0;
+          static size_t wsInboundReceived = 0;
+          static size_t wsFrameReceived = 0;
+          static uint32_t wsFrameNumber = 0;
           // Incoming WebSocket JSON is parsed in-place in activeJob.command.
           // Only the object metadata needs ArduinoJson storage; keeping a
           // second 2 KB receive buffer here starved TCP allocations.
@@ -106,6 +113,14 @@ namespace RFLink { namespace Portal {
                     return false;
                   continue;
                 }
+                if(static_cast<unsigned char>(c) < 0x20) {
+                  char control[7];
+                  snprintf(control, sizeof(control), "\\u%04x",
+                           static_cast<unsigned int>(static_cast<unsigned char>(c)));
+                  if(!appendJsonText(cursor, remaining, control))
+                    return false;
+                  continue;
+                }
                 if(remaining <= 1)
                   return false;
                 *cursor++ = c;
@@ -151,7 +166,9 @@ namespace RFLink { namespace Portal {
             // client is disconnected or its queue is already full.
             if(client == nullptr || !apiWebSocket.availableForWrite(client->id()))
               return false;
-            size_t length = serializeJson(doc, wsOutbound, sizeof(wsOutbound) - 1);
+            if(measureJson(doc) >= sizeof(wsOutbound))
+              return false;
+            size_t length = serializeJson(doc, wsOutbound, sizeof(wsOutbound));
             if(length == 0)
               return false;
             wsOutbound[length] = 0;
@@ -372,6 +389,19 @@ namespace RFLink { namespace Portal {
 
             uint32_t requestId = root[F("id")] | 0;
 
+            if(strcmp(type, "learn_ack") == 0) {
+              if((root[F("sequence")] | 0UL) == pendingLearnSequence) {
+                free(pendingLearnEvent);
+                pendingLearnEvent = nullptr;
+                pendingLearnSequence = 0;
+              }
+              StaticJsonDocument<96> reply;
+              reply["type"] = "learn_acknowledged";
+              reply["id"] = requestId;
+              wsSendJsonToClient(client, reply);
+              return;
+            }
+
             if(strcmp(type, "ping") == 0) {
               StaticJsonDocument<96> out;
               JsonObject pong = out.to<JsonObject>();
@@ -447,11 +477,19 @@ namespace RFLink { namespace Portal {
             }
 
             if(strcmp(type, "learn") == 0) {
+              if(pendingLearnEvent != nullptr) {
+                wsSendError(client, requestId, F("Previous learn capture awaits acknowledgement"));
+                return;
+              }
               if(jobInProgress) {
                 wsSendError(client, requestId, F("Bridge busy"));
                 return;
               }
               unsigned int learnSeconds = root[F("seconds")] | 30;
+              if(learnSeconds > 300) {
+                wsSendError(client, requestId, F("Learn duration exceeds 300 seconds"));
+                return;
+              }
               activeJob = WsJob{};
               activeJob.clientId = client->id();
               activeJob.requestId = requestId;
@@ -477,6 +515,10 @@ namespace RFLink { namespace Portal {
             }
 
             if(strcmp(type, "update") == 0) {
+              if(pendingLearnEvent != nullptr) {
+                wsSendError(client, requestId, F("Acknowledge pending learn capture before updating"));
+                return;
+              }
               if(jobInProgress) {
                 wsSendError(client, requestId, F("Bridge busy"));
                 return;
@@ -511,6 +553,8 @@ namespace RFLink { namespace Portal {
               // the ESP8285 heap.
               client->setCloseClientOnQueueFull(false);
               wsSendHello(client);
+              if(pendingLearnEvent != nullptr)
+                client->text(pendingLearnEvent);
               return;
             }
             if(type == WS_EVT_DISCONNECT) {
@@ -523,7 +567,7 @@ namespace RFLink { namespace Portal {
                 // Commands are deferred to the cooperative loop. If their
                 // caller has gone away before that loop begins execution,
                 // never transmit an obsolete RF action later.
-                if(jobInProgress && activeJob.type == WsJobType::Command &&
+                if(jobInProgress && !jobExecuting && activeJob.type == WsJobType::Command &&
                    activeJob.clientId == client->id()) {
                   activeJob = WsJob{};
                   jobInProgress = false;
@@ -535,7 +579,7 @@ namespace RFLink { namespace Portal {
               AwsFrameInfo *info = (AwsFrameInfo *) arg;
               if(info == nullptr)
                 return;
-              if(info->index == 0) {
+              if(info->num == 0 && info->index == 0) {
                 if(info->opcode != WS_TEXT)
                   return;
                 if(jobInProgress || wsInboundActive) {
@@ -544,25 +588,39 @@ namespace RFLink { namespace Portal {
                 }
                 wsInboundActive = true;
                 wsInboundClientId = client->id();
+                wsInboundStartedAt = millis();
+                wsInboundReceived = 0;
+                wsFrameReceived = 0;
+                wsFrameNumber = 0;
                 activeJob.command[0] = 0;
               } else if(!wsInboundActive || wsInboundClientId != client->id()) {
                 wsSendError(client, 0, F("Unexpected WebSocket continuation"));
                 return;
               }
-              if(info->index + len >= sizeof(activeJob.command)) {
+              if(info->num != wsFrameNumber || info->index != wsFrameReceived ||
+                 wsInboundReceived >= sizeof(activeJob.command) ||
+                 len >= sizeof(activeJob.command) - wsInboundReceived ||
+                 info->index + len > info->len) {
                 wsInboundActive = false;
                 wsInboundClientId = 0;
                 activeJob.command[0] = 0;
                 wsSendError(client, 0, F("WebSocket message too long"));
                 return;
               }
-              memcpy(activeJob.command + info->index, data, len);
-              activeJob.command[info->index + len] = 0;
-              if(!info->final)
+              memcpy(activeJob.command + wsInboundReceived, data, len);
+              wsInboundReceived += len;
+              wsFrameReceived += len;
+              activeJob.command[wsInboundReceived] = 0;
+              if(wsFrameReceived != info->len)
                 return;
+              if(!info->final) {
+                wsFrameNumber++;
+                wsFrameReceived = 0;
+                return;
+              }
               wsInboundActive = false;
               wsInboundClientId = 0;
-              wsHandleMessage(client, activeJob.command, info->index + len);
+              wsHandleMessage(client, activeJob.command, wsInboundReceived);
               return;
             }
             if(type == WS_EVT_ERROR) {
@@ -581,6 +639,7 @@ namespace RFLink { namespace Portal {
             return;
 
           const uint32_t startedUs = micros();
+          jobExecuting = true;
 
           if(activeJob.type == WsJobType::Command) {
             yield();
@@ -604,6 +663,7 @@ namespace RFLink { namespace Portal {
 
           activeJob.elapsedMs = (micros() - startedUs) / 1000UL;
           wsFinishJob();
+          jobExecuting = false;
         }
 
         void broadcastRfEvent(uint32_t sequence, unsigned long eventMillis, const char *message,
@@ -624,12 +684,12 @@ namespace RFLink { namespace Portal {
           apiWebSocket.textAll(wsOutbound);
         }
 
-        void broadcastRawRfEvent(uint32_t sequence, unsigned long eventMillis,
+        bool broadcastRawRfEvent(uint32_t sequence, unsigned long eventMillis,
                                  int pulseCount, byte repeat, byte delay,
                                  byte multiply, int rssi, bool pulseCountTrimmed,
                                  const uint16_t *pulses) {
-          if(apiWebSocket.count() == 0 || pulses == nullptr || !apiWebSocket.availableForWriteAll())
-            return;
+          if(pulses == nullptr || pendingLearnEvent != nullptr)
+            return false;
 
           bool canIncludeCommand = pulseCount >= 2;
           if(!((canIncludeCommand && buildRawRfEventJson(sequence, eventMillis, pulseCount,
@@ -637,11 +697,34 @@ namespace RFLink { namespace Portal {
                                                           pulseCountTrimmed, pulses, true)) ||
                buildRawRfEventJson(sequence, eventMillis, pulseCount, repeat, delay,
                                    multiply, rssi, true, pulses, false)))
-            return;
-          apiWebSocket.textAll(wsOutbound);
+            return false;
+          const size_t length = strlen(wsOutbound);
+          const char suffix[] = ",\"learn_capture\":true}}";
+          if(length < 2 || length - 2 + sizeof(suffix) > sizeof(wsOutbound))
+            return false;
+          pendingLearnEvent = static_cast<char *>(malloc(length - 2 + sizeof(suffix)));
+          if(pendingLearnEvent == nullptr)
+            return false;
+          memcpy(pendingLearnEvent, wsOutbound, length - 2);
+          memcpy(pendingLearnEvent + length - 2, suffix, sizeof(suffix));
+          pendingLearnSequence = sequence;
+          if(apiWebSocket.count() > 0 && apiWebSocket.availableForWriteAll())
+            apiWebSocket.textAll(pendingLearnEvent);
+          // Capture is retained until the integration acknowledges its sequence.
+          return true;
         }
 
         void cleanupWebSocketClients() {
+          if(wsInboundActive && millis() - wsInboundStartedAt >= 5000UL) {
+            const uint32_t clientId = wsInboundClientId;
+            wsInboundActive = false;
+            wsInboundClientId = 0;
+            if(!jobInProgress)
+              activeJob.command[0] = 0;
+            AsyncWebSocketClient *client = apiWebSocket.client(clientId);
+            if(client != nullptr)
+              client->close();
+          }
           apiWebSocket.cleanupClients();
         }
 

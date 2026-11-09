@@ -281,6 +281,10 @@ namespace RFLink {
     }
 
     void armRawRfLearning(unsigned int seconds) {
+      if(seconds == 0)
+        seconds = 30;
+      if(seconds > 300)
+        seconds = 300;
       rawRfLearningArmed = true;
       rawRfLearningExpiresAt = millis() + ((unsigned long) seconds * 1000UL);
     }
@@ -317,11 +321,8 @@ namespace RFLink {
         pulseCountTrimmed = true;
       }
 
-      rawRfLearningArmed = false;
-      rawRfLearningExpiresAt = 0;
-
 #ifndef RFLINK_PORTAL_DISABLED
-      RFLink::Portal::broadcastRawRfEvent(
+      const bool queued = RFLink::Portal::broadcastRawRfEvent(
         ++rfEventSequence,
         millis(),
         number,
@@ -332,6 +333,12 @@ namespace RFLink {
         pulseCountTrimmed,
         pulses
       );
+      if(queued) {
+        rawRfLearningArmed = false;
+        rawRfLearningExpiresAt = 0;
+      } else {
+        Serial.println(F("Learn capture could not be queued; learning remains armed"));
+      }
 #endif
     }
 
@@ -513,8 +520,8 @@ namespace RFLink {
           } else if (strncasecmp(cmd + 3, "signal", 6) == 0) {
             commandAccepted = Signal::executeCliCommand(cmd + 3 + 6 + 1);
           } else if (strncasecmp(cmd + 3, "config", 6) == 0) {
-            Config::executeCliCommand(cmd + 3 + 6 + 1);
-            commandAccepted = true;
+            // Configuration belongs to provisioning, never the RF command API.
+            commandAccepted = false;
           } else {
             // -------------------------------------------------------
             // Handle Generic Commands / Translate protocol data into Nodo text commands

@@ -47,7 +47,8 @@ def main() -> None:
     if "#define SERIAL_ENABLED" in api.read_text(encoding="utf-8"):
         raise SystemExit("Sonoff target must not compile the retired runtime serial transport")
     require(websocket, "char command[INPUT_COMMAND_SIZE] = {0};")
-    require(websocket, "if(info->index + len >= sizeof(activeJob.command))")
+    require(websocket, "len >= sizeof(activeJob.command) - wsInboundReceived")
+    require(websocket, "info->index != wsFrameReceived")
     require(wifi, "volatile bool stationGotIpPending = false;")
     require(wifi, "volatile bool stationDisconnectedPending = false;")
     require(wifi, "void processStationGotIp()")

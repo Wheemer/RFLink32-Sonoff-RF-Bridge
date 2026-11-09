@@ -271,9 +271,17 @@ namespace RFLink { namespace Portal {
           }
 
           String ssid = request->getParam(F("client_ssid"), true)->value();
+          if(ssid.length() == 0 || ssid.length() > 32) {
+            request->send(400, F("text/plain"), F("Select a valid WiFi network"));
+            return;
+          }
           String password;
           if(request->hasParam(F("client_password"), true))
             password = request->getParam(F("client_password"), true)->value();
+          if(password.length() > 64) {
+            request->send(400, F("text/plain"), F("WiFi password exceeds 64 bytes"));
+            return;
+          }
 
           StaticJsonDocument<512> input;
           JsonObject root = input.to<JsonObject>();

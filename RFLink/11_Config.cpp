@@ -67,101 +67,6 @@ namespace RFLink
     StaticJsonDocument<RFLINK_CONFIG_JSON_BUFFER_SIZE> doc; // Current config's JSON document
 
 #ifdef ESP8266
-    namespace {
-      // Preserve persistent configuration when changing the ESP8285 layout.
-      // Each previous filesystem is mounted without auto-formatting and copied
-      // only after its configuration has been validated in memory.
-      constexpr uint32_t LEGACY_FS_START = 0xBB000;
-      constexpr uint32_t LEGACY_FS_SIZE = 0x40000;
-      constexpr uint32_t OTA64_FS_START = 0xEB000;
-      constexpr uint32_t OTA64_FS_SIZE = 0x10000;
-      constexpr uint32_t LEGACY_FS_PAGE_SIZE = 0x100;
-      constexpr uint32_t LEGACY_FS_BLOCK_SIZE = 0x1000;
-      constexpr uint32_t LEGACY_FS_MAX_OPEN_FILES = 5;
-      constexpr size_t MAX_LEGACY_CONFIG_BYTES = 8192;
-      constexpr size_t RTS_CONFIG_BYTES = 160;
-
-      bool migrateConfigFromFilesystem(uint32_t sourceStart, uint32_t sourceSize)
-      {
-        fs::FS legacyFs(fs::FSImplPtr(new littlefs_impl::LittleFSImpl(
-          sourceStart,
-          sourceSize,
-          LEGACY_FS_PAGE_SIZE,
-          LEGACY_FS_BLOCK_SIZE,
-          LEGACY_FS_MAX_OPEN_FILES
-        )));
-        LittleFSConfig noFormat(false);
-        if(!legacyFs.setConfig(noFormat) || !legacyFs.begin())
-          return false;
-
-        File legacyFile = legacyFs.open(configFileName, "r");
-        if(!legacyFile) {
-          legacyFs.end();
-          return false;
-        }
-
-        if(legacyFile.size() == 0 || legacyFile.size() > MAX_LEGACY_CONFIG_BYTES) {
-          legacyFile.close();
-          legacyFs.end();
-          return false;
-        }
-
-        doc.clear();
-        DeserializationError error = deserializeJson(doc, legacyFile);
-        legacyFile.close();
-        if(error || !doc.is<JsonObject>()) {
-          legacyFs.end();
-          doc.clear();
-          return false;
-        }
-
-        uint8_t rtsConfig[RTS_CONFIG_BYTES];
-        size_t rtsConfigBytes = 0;
-        File rtsFile = legacyFs.open(F("/rts.bin"), "r");
-        if(rtsFile) {
-          rtsConfigBytes = rtsFile.size();
-          if(rtsConfigBytes > sizeof(rtsConfig) ||
-             static_cast<size_t>(rtsFile.read(rtsConfig, rtsConfigBytes)) != rtsConfigBytes) {
-            rtsFile.close();
-            legacyFs.end();
-            doc.clear();
-            return false;
-          }
-          rtsFile.close();
-        }
-        legacyFs.end();
-
-        if(!LittleFS.format() || !LittleFS.begin()) {
-          doc.clear();
-          return false;
-        }
-
-        File destination = LittleFS.open(configFileName, "w");
-        if(!destination) {
-          doc.clear();
-          return false;
-        }
-        const size_t written = serializeJson(doc, destination);
-        destination.close();
-        if(written == 0) {
-          doc.clear();
-          return false;
-        }
-        if(rtsConfigBytes > 0) {
-          File rtsDestination = LittleFS.open(F("/rts.bin"), "w");
-          if(!rtsDestination ||
-             rtsDestination.write(rtsConfig, rtsConfigBytes) != rtsConfigBytes) {
-            if(rtsDestination)
-              rtsDestination.close();
-            doc.clear();
-            return false;
-          }
-          rtsDestination.close();
-        }
-        doc.clear();
-        return true;
-      }
-
       bool mountPersistentFilesystem()
       {
         LittleFSConfig noFormat(false);
@@ -170,17 +75,22 @@ namespace RFLink
         if(LittleFS.begin())
           return true;
 
-        Serial.println(F("No current-layout filesystem; checking prior layouts..."));
-        if(migrateConfigFromFilesystem(OTA64_FS_START, OTA64_FS_SIZE) ||
-           migrateConfigFromFilesystem(LEGACY_FS_START, LEGACY_FS_SIZE)) {
-          Serial.println(F("Migrated persistent configuration to current layout."));
-          return true;
+        uint32_t words[64];
+        for(uint32_t address = 0xF3000; address < 0xFB000; address += sizeof(words)) {
+          if(!ESP.flashRead(address, words, sizeof(words)))
+            return false;
+          for(size_t index = 0; index < sizeof(words) / sizeof(words[0]); ++index) {
+            if(words[index] != 0xFFFFFFFFUL) {
+              Serial.println(F("Filesystem mount failed; preserving existing flash data"));
+              return false;
+            }
+          }
+          yield();
         }
-
-        Serial.println(F("No legacy configuration found; formatting OTA layout."));
+        Serial.println(F("Erased filesystem detected; initializing current layout."));
         return LittleFS.format() && LittleFS.begin();
       }
-    }
+
 #endif
 
     void resetConfig()
@@ -310,6 +220,18 @@ namespace RFLink
         Serial.println(F("Failed to read file, using default configuration"));
       file.close();
 
+      if(error && LittleFS.exists("/config.backup")) {
+        doc.clear();
+        File backup = LittleFS.open("/config.backup", "r");
+        error = deserializeJson(doc, backup);
+        backup.close();
+        if(!error && doc.is<JsonObject>()) {
+          Serial.println(F("Recovered configuration from interrupted save backup"));
+        } else {
+          doc.clear();
+        }
+      }
+
       Serial.printf_P(PSTR("JSON file mem usage: %u / %u\r\n"), doc.memoryUsage(), doc.memoryPool().capacity());
 
       bool fileHasChanged = false;
@@ -409,7 +331,7 @@ namespace RFLink
         saveConfigToFlash();
       }
 
-      printFile();
+      // Never dump persisted Wi-Fi credentials during normal boot.
     }
 
     class CallbackManager
@@ -821,10 +743,11 @@ namespace RFLink
         return false;
       }
 
+      const size_t expected_bytes = measureJson(doc);
       auto bytes_written = serializeJson(doc, file);
       file.close();
 
-      if (bytes_written == 0)
+      if (bytes_written == 0 || bytes_written != expected_bytes)
       {
         Serial.println(F("failed!"));
         if(restartScanner)

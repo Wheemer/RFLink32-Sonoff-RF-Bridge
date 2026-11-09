@@ -66,6 +66,10 @@ namespace RFLink { namespace Wifi {
         volatile bool stationGotIpPending = false;
         volatile bool stationDisconnectedPending = false;
         unsigned long setupAccessPointClientConnectedAt = 0;
+        unsigned long stationReconnectAt = 0;
+        uint8_t stationReconnectAttempts = 0;
+        const unsigned long STATION_RECONNECT_INITIAL_MS = 15000;
+        const unsigned long STATION_RECONNECT_MAX_MS = 30000;
         const unsigned long SETUP_AP_SHUTDOWN_GRACE_MS = 1000;
         struct CachedWifiNetwork {
           String ssid;
@@ -469,43 +473,79 @@ namespace RFLink { namespace Wifi {
           setupAccessPointClientConnectedAt = 0;
         }
 
+        void clearStationReconnectSchedule() {
+          stationReconnectAt = 0;
+          stationReconnectAttempts = 0;
+        }
 
+        unsigned long stationReconnectDelayMs() {
+          uint8_t shift = stationReconnectAttempts > 5 ? 5 : stationReconnectAttempts;
+          unsigned long delayMs = STATION_RECONNECT_INITIAL_MS << shift;
+          return delayMs > STATION_RECONNECT_MAX_MS ? STATION_RECONNECT_MAX_MS : delayMs;
+        }
+
+        void scheduleStationReconnect(unsigned long delayMs = STATION_RECONNECT_INITIAL_MS) {
+          if(!params::client_enabled || WiFi.isConnected())
+            return;
+          stationReconnectAt = millis() + delayMs;
+        }
+
+        void configureClientWifi() {
+#ifdef ESP32
+          WiFi.setHostname(params::client_hostname.c_str());
+#else
+          WiFi.hostname(params::client_hostname);
+#endif
+          if(!params::client_dhcp_enabled) {
+            IPAddress ip, gateway, mask, dns;
+            ip.fromString(params::client_ip);
+            gateway.fromString(params::client_gateway);
+            mask.fromString(params::client_mask);
+            dns.fromString(params::client_dns);
+            WiFi.config(ip, gateway, mask, dns);
+          } else {
+            WiFi.config(IPAddress((uint32_t) 0), IPAddress((uint32_t) 0), IPAddress((uint32_t) 0));
+          }
+          WiFi.setAutoConnect(true);
+          WiFi.setAutoReconnect(true);
+        }
+
+        void startClientAssociation() {
+          if(!params::client_enabled || params::client_ssid.length() == 0)
+            return;
+          WiFiMode_t mode = WiFi.getMode();
+          if((mode & WIFI_STA) == 0)
+            WiFi.mode((mode & WIFI_AP) != 0 ? WIFI_AP_STA : WIFI_STA);
+          Serial.print(F("Starting WiFi association with SSID "));
+          Serial.println(params::client_ssid);
+          WiFi.begin(params::client_ssid.c_str(), params::client_password.c_str());
+        }
+
+        void maintainStationReconnect() {
+          if(!params::client_enabled || WiFi.isConnected()) {
+            clearStationReconnectSchedule();
+            return;
+          }
+          if(stationReconnectAt == 0) {
+            scheduleStationReconnect();
+            return;
+          }
+          if((long)(millis() - stationReconnectAt) < 0)
+            return;
+          if(stationReconnectAttempts < 255)
+            stationReconnectAttempts++;
+          Serial.printf_P(PSTR("WiFi reconnect attempt %u\\r\\n"), stationReconnectAttempts);
+          startClientAssociation();
+          scheduleStationReconnect(stationReconnectDelayMs());
+        }
 
         void resetClientWifi() {
           if(params::client_enabled) {
 
-            // We start by connecting to a WiFi network
-            Serial.print(F("Trying to connect WIFI SSID "));
-            Serial.print(params::client_ssid.c_str());
-            Serial.println(F(". A status will be given whenever it occurs."));
-
-#ifdef ESP32
-            WiFi.setHostname(params::client_hostname.c_str());
-#else
-            WiFi.hostname(params::client_hostname);
-#endif
-
-            if( !params::client_dhcp_enabled) {
-              IPAddress ip, gateway, mask, dns;
-
-              ip.fromString(params::client_ip);
-              gateway.fromString(params::client_gateway);
-              mask.fromString(params::client_mask);
-              dns.fromString(params::client_dns);
-
-              WiFi.config(ip, gateway, mask, dns );
-
-            } else {
-              WiFi.config(IPAddress((uint32_t) 0), IPAddress((uint32_t) 0), IPAddress((uint32_t) 0));
-            }
-
-            delay(500);
-            if(!WiFi.isConnected() || WiFi.SSID() != params::client_ssid) {
-              WiFi.begin(params::client_ssid.c_str(), params::client_password.c_str());
-            }
-
-            WiFi.setAutoConnect(true);
-            WiFi.setAutoReconnect(true);
+            configureClientWifi();
+            clearStationReconnectSchedule();
+            startClientAssociation();
+            scheduleStationReconnect();
 
           }
           else {
@@ -513,6 +553,7 @@ namespace RFLink { namespace Wifi {
             WiFi.setAutoConnect(false);
             WiFi.setAutoReconnect(false);
             WiFi.disconnect();
+            clearStationReconnectSchedule();
           }
 
         }
@@ -641,6 +682,7 @@ namespace RFLink { namespace Wifi {
           if(!stationGotIpPending)
             return;
 
+          clearStationReconnectSchedule();
           stationGotIpPending = false;
           Serial.print(F("WiFi Client has received a new IP: "));
           Serial.println(WiFi.localIP());
@@ -660,6 +702,8 @@ namespace RFLink { namespace Wifi {
 
           stationDisconnectedPending = false;
           stopMdnsDiscovery();
+          if(stationReconnectAt == 0)
+            scheduleStationReconnect();
         }
 
         void startMdnsDiscovery() {
@@ -775,6 +819,10 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
           refreshClientParametersFromConfig(false);
           refreshAccessPointParametersFromConfig(false);
 
+          // Credentials live in Config. Retries must not rewrite the SDK
+          // Wi-Fi sector every time the station needs to reassociate.
+          WiFi.persistent(false);
+
 #ifdef ESP32
           WiFi.onEvent(eventHandler_WiFiStationConnected, ARDUINO_EVENT_WIFI_STA_CONNECTED );
           WiFi.onEvent(eventHandler_WiFiStationGotIp, ARDUINO_EVENT_WIFI_STA_GOT_IP );
@@ -788,7 +836,7 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
 #ifdef ESP32
           WiFi.setTxPower(WIFI_POWER_11dBm);
 #elif ESP8266
-          WiFi.setSleepMode(WIFI_MODEM_SLEEP);
+          WiFi.setSleepMode(WIFI_NONE_SLEEP);
   WiFi.setOutputPower(WIFI_PWR.toInt());
 #endif // ESP
 
@@ -798,6 +846,7 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
         void mainLoop() {
           processStationDisconnected();
           processStationGotIp();
+          maintainStationReconnect();
 #if defined(ESP8266) || defined(ESP32)
           if(mdnsStartAfterSetupAccessPointShutdown && WiFi.isConnected() && (WiFi.getMode() & WIFI_AP) == 0) {
             startMdnsDiscovery();

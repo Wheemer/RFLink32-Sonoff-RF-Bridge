@@ -250,6 +250,8 @@ namespace RFLink::UpdateSecurity {
     if(!persistState(UpdateResult::Fetching, 0, phaseDetail)) {
       snprintf(updateLastError, sizeof(updateLastError), "Could not persist OTA updater state");
       Serial.println(updateLastError);
+      if(resumeScanning)
+        RFLink::Signal::AsyncSignalScanner::startScanning();
       return;
     }
     int32_t errorCode = -1;

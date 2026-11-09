@@ -6,6 +6,8 @@
 // ************************************* //
 
 #include <Arduino.h>
+#include <errno.h>
+#include <limits.h>
 #include "1_Radio.h"
 #include "2_Signal.h"
 #include "5_Plugin.h"
@@ -1015,23 +1017,26 @@ namespace RFLink
 
     void delayLongPulse(unsigned long duration_us)
     {
-      if(duration_us <= 5000UL) {
+      if(duration_us <= 4000UL) {
         delayMicroseconds(duration_us);
         return;
       }
 
       // Long raw-code marks or spaces can be 80-110ms. Holding interrupts off
       // for either level starves ESP8266 Wi-Fi/watchdog and can reboot the bridge.
+      const uint32_t deadline = micros() + duration_us;
       interrupts();
-      while(duration_us >= 1000UL) {
-        unsigned long chunk = duration_us > 16000UL ? 16000UL : duration_us;
+      while(true) {
+        const int32_t remaining = static_cast<int32_t>(deadline - micros());
+        if(remaining <= 0)
+          break;
+        unsigned long chunk = remaining > 16000 ? 16000UL : static_cast<unsigned long>(remaining);
         delayMicroseconds(chunk);
-        duration_us -= chunk;
-        yield();
-        ESP.wdtFeed();
+        if(static_cast<int32_t>(deadline - micros()) > 1000) {
+          yield();
+          ESP.wdtFeed();
+        }
       }
-      if(duration_us > 0)
-        delayMicroseconds(duration_us);
       noInterrupts();
     }
 
@@ -1095,8 +1100,9 @@ namespace RFLink
         return false;
       p = skipJsonWhitespace(p + 1);
       char *endPtr = nullptr;
+      errno = 0;
       long parsed = strtol(p, &endPtr, 10);
-      if(endPtr == p)
+      if(endPtr == p || errno == ERANGE || parsed < INT_MIN || parsed > INT_MAX)
         return false;
       endPtr = (char *)skipJsonWhitespace(endPtr);
       if(*endPtr != ',' && *endPtr != '}' && *endPtr != ']')
@@ -1108,8 +1114,6 @@ namespace RFLink
     bool scanJsonPulses(const char *json_str, RawSignalStruct &signal, bool fill, unsigned long multiply, int &count, unsigned long &longest_us)
     {
       const char *p = strstr(json_str, "\"pulses\"");
-      if(p == nullptr)
-        p = strstr(json_str, "pulses");
       if(p == nullptr)
         return false;
       p = strchr(p, '[');
@@ -1127,8 +1131,9 @@ namespace RFLink
           return false;
 
         char *endPtr = nullptr;
+        errno = 0;
         unsigned long pulse = strtoul(p, &endPtr, 10);
-        if(endPtr == p)
+        if(endPtr == p || errno == ERANGE || pulse == 0 || pulse > 65535UL * 255UL)
           return false;
         p = endPtr;
 
@@ -1143,6 +1148,8 @@ namespace RFLink
         p = skipJsonWhitespace(p);
         if(*p == ',') {
           p++;
+          if(*skipJsonWhitespace(p) == ']')
+            return false;
           continue;
         }
         if(*p == ']')
@@ -1163,6 +1170,18 @@ namespace RFLink
       signal.Delay = 0;
       signal.Multiply = params::sample_rate;
       signal.Time = 0UL;
+
+      // Validate the complete object without allocating an array-sized JSON pool.
+      StaticJsonDocument<64> filter;
+      filter["repeat"] = true;
+      filter["delay"] = true;
+      StaticJsonDocument<192> metadata;
+      if(deserializeJson(metadata, json_str, DeserializationOption::Filter(filter)) ||
+         !metadata.is<JsonObject>())
+        return failTxParse("invalid sendRF object");
+      if((metadata.containsKey("repeat") && !metadata["repeat"].is<int>()) ||
+         (metadata.containsKey("delay") && !metadata["delay"].is<int>()))
+        return failTxParse("invalid sendRF metadata");
 
       int pulseCount = 0;
       unsigned long longest_us = 0;

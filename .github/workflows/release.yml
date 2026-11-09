@@ -27,6 +27,7 @@ jobs:
 
       - name: Build the modified Sonoff RF Bridge firmware
         run: |
+          python tools/generate_wifi_setup_asset.py RFLink/WifiSetupPage.html RFLink/WifiSetupPage_gz.h
           for attempt in 1 2 3; do
             if pio run -e sonoff_bridge; then
               exit 0
@@ -80,12 +81,8 @@ jobs:
         run: |
           target="$(git rev-list -n 1 "$GITHUB_REF_NAME")"
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" \
-              release/firmware.bin.gz.signed \
-              release/manifest.json \
-              release/RFBridge-"${GITHUB_REF_NAME#v}"-full.bin \
-              release/RFBridge-"${GITHUB_REF_NAME#v}"-full.bin.sha256 \
-              --clobber
+            echo "Existing firmware releases are immutable; use a new version."
+            exit 1
           else
             gh release create "$GITHUB_REF_NAME" \
               release/firmware.bin.gz.signed \
