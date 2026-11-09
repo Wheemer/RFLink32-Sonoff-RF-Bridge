@@ -61,7 +61,8 @@ def main() -> None:
         raise SystemExit("Both WiFi disconnect callbacks must defer work to the main loop")
 
     for call in (
-        "delayMicroseconds(signal->Pulses[x++] * signal->Multiply);",
+        "delayLongPulse(high_us);",
+        "delayLongPulse(low_us);",
         "const uint32_t started_us = micros();",
         "runtime::txLastElapsedMs = (micros() - started_us) / 1000UL;",
         "uint64_t estimated_us = 0;",

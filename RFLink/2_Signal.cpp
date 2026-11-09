@@ -12,11 +12,6 @@
 #include "2_Signal.h"
 #include "5_Plugin.h"
 #include "4_Display.h"
-#ifdef ESP8266
-#include <ESP8266WiFi.h>
-#include <ets_sys.h>
-#include "RfPulseTrain.h"
-#endif
 
 unsigned long SignalCRC = 0L;   // holds the bitstream value for some plugins to identify RF repeats
 unsigned long SignalCRC_1 = 0L; // holds the previous SignalCRC (for mixed burst protocols)
@@ -1020,70 +1015,28 @@ namespace RFLink
       interrupts();
     }
 
-#ifdef ESP8266
-    namespace {
-      RfPulseTrain pulseTrain;
-      uint8_t timerCycleShift = 0;
-      struct RfPinWriter {
-        void IRAM_ATTR operator()(bool high) const {
-          if(high) GPOS = 1UL << Radio::pins::TX_DATA;
-          else GPOC = 1UL << Radio::pins::TX_DATA;
-        }
-      };
 
-      void IRAM_ATTR rfTimerInterrupt() {
-        uint32_t cycles = pulseTrain.step(ESP.getCycleCount(), RfPinWriter{});
-        if(pulseTrain.done) {
-          timer1_disable();
-          return;
-        }
-        // Match the pinned core waveform driver's DIV1 conversion. CPU cycles
-        // are not timer ticks at 160 MHz. Use the core's 180-cycle correction.
-        const uint32_t minimum = pulseTrain.cyclesPerUs * 4U;
-        if(cycles < minimum) cycles = minimum;
-        const uint32_t ticks = (cycles - 180U) >> timerCycleShift;
-        timer1_write(ticks > 0x7fffffU ? 0x7fffffU : ticks);
+    void delayLongPulse(unsigned long duration_us)
+    {
+      if(duration_us <= 5000UL) {
+        delayMicroseconds(duration_us);
+        return;
       }
 
-      bool useCycleTimer(const RawSignalStruct *signal) {
-        for(int i = 1; i < signal->Number; i += 2) {
-          if(static_cast<uint32_t>(signal->Pulses[i]) * signal->Multiply > 4000UL &&
-             (i != signal->Number - 1 ||
-              static_cast<uint32_t>(signal->Pulses[i + 1]) * signal->Multiply < 20000UL))
-            return false;
-        }
-        return true;
+      // Long raw-code marks or spaces can be 80-110ms. Holding interrupts off
+      // for either level starves ESP8266 Wi-Fi/watchdog and can reboot the bridge.
+      interrupts();
+      while(duration_us >= 1000UL) {
+        unsigned long chunk = duration_us > 16000UL ? 16000UL : duration_us;
+        delayMicroseconds(chunk);
+        duration_us -= chunk;
+        yield();
+        ESP.wdtFeed();
       }
-
-      void sendCycleTimed(RawSignalStruct *signal) {
-        const auto sleepMode = WiFi.getSleepMode();
-        WiFi.setSleepMode(WIFI_NONE_SLEEP);
-        pulseTrain = RfPulseTrain{};
-        pulseTrain.pulses = signal->Pulses;
-        pulseTrain.count = signal->Number;
-        pulseTrain.repeats = signal->Repeats;
-        pulseTrain.multiply = signal->Multiply;
-        pulseTrain.gapUs = static_cast<uint32_t>(signal->Delay) * 1000UL;
-        pulseTrain.cyclesPerUs = clockCyclesPerMicrosecond();
-        timerCycleShift = pulseTrain.cyclesPerUs == 160U ? 1 : 0;
-        // This target has no PWM/tone/servo users. Own FRC1 only for this send.
-        timer1_disable();
-        ETS_FRC_TIMER1_INTR_ATTACH(nullptr, nullptr);
-        ETS_FRC_TIMER1_NMI_INTR_ATTACH(rfTimerInterrupt);
-        timer1_write(80U);
-        timer1_enable(TIM_DIV1, TIM_EDGE, TIM_SINGLE);
-        while(!pulseTrain.done) {
-          yield();
-          ESP.wdtFeed();
-        }
-        timer1_disable();
-        ETS_FRC_TIMER1_NMI_INTR_ATTACH(nullptr);
-        timer1_isr_init();
-        WiFi.setSleepMode(sleepMode);
-        Serial.printf_P(PSTR("RF timer max late=%lu cycles\n"), pulseTrain.maxLateCycles);
-      }
+      if(duration_us > 0)
+        delayMicroseconds(duration_us);
+      noInterrupts();
     }
-#endif
 
     void RawSendRF(RawSignalStruct *signal)
     {
@@ -1102,28 +1055,24 @@ namespace RFLink
 
       Radio::set_Radio_mode(Radio::States::Radio_TX);
 
-#ifdef ESP8266
-      if(useCycleTimer(signal)) {
-        sendCycleTimed(signal);
-      } else
-#endif
-      {
       for (uint16_t y = 0; y <= signal->Repeats; y++)
       { // repeat transmitting the RF code
         x = 1;
         noInterrupts();
         while (x < signal->Number)
         {
+          unsigned long high_us = (unsigned long)signal->Pulses[x++] * signal->Multiply;
+          unsigned long low_us = (unsigned long)signal->Pulses[x++] * signal->Multiply;
           digitalWrite(Radio::pins::TX_DATA, HIGH);
-          delayMicroseconds(signal->Pulses[x++] * signal->Multiply);
+          delayLongPulse(high_us);
           digitalWrite(Radio::pins::TX_DATA, LOW);
-          delayMicroseconds(signal->Pulses[x++] * signal->Multiply);
+          delayLongPulse(low_us);
         }
         interrupts();
         if (y != signal->Repeats)
           delay(signal->Delay); // gap between repeats, outside the noInterrupts region
       }
-      }
+
       Radio::set_Radio_mode(Radio::States::Radio_RX);
       runtime::txFinishedCount++;
       runtime::txLastFinishedMs = millis();
