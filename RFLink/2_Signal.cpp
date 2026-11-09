@@ -1133,11 +1133,15 @@ namespace RFLink
         char *endPtr = nullptr;
         errno = 0;
         unsigned long pulse = strtoul(p, &endPtr, 10);
-        if(endPtr == p || errno == ERANGE || pulse == 0 || pulse > 65535UL * 255UL)
+        if(endPtr == p || errno == ERANGE || pulse > 65535UL * 255UL)
           return false;
         p = endPtr;
 
         count++;
+        // A zero terminal LOW preserves an RF frame without adding a gap.
+        // Zero marks and interior zero spaces remain invalid.
+        if(pulse == 0 && ((count % 2) != 0 || *skipJsonWhitespace(p) != ']'))
+          return false;
         if(count > RAW_BUFFER_SIZE)
           return true;
         if(pulse > longest_us)

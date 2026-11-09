@@ -24,6 +24,9 @@ int main() {
   int count = 0; unsigned long longest = 0;
   assert(scanJsonPulses("{\"pulses\":[100,200]}", s, false, 1, count, longest));
   assert(count == 2 && longest == 200);
+  assert(scanJsonPulses("{\"pulses\":[100,0]}", s, false, 1, count, longest));
+  assert(count == 2 && longest == 100);
+  assert(!scanJsonPulses("{\"pulses\":[100,0,100,200]}", s, false, 1, count, longest));
   assert(!scanJsonPulses("{\"pulses\":[0,200]}", s, false, 1, count, longest));
   assert(!scanJsonPulses("{\"pulses\":[100,]}", s, false, 1, count, longest));
   assert(!scanJsonPulses("{\"pulses\":[999999999999999999999999]}", s, false, 1, count, longest));

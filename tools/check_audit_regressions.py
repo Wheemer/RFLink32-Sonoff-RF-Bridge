@@ -44,6 +44,6 @@ assert "startScanning()" in failure
 signal = source("2_Signal.cpp")
 assert "errno == ERANGE" in signal
 assert "pulse > 65535UL * 255UL" in signal
-assert "pulse == 0" in signal
+assert "pulse == 0 && ((count % 2) != 0" in signal
 assert "if(seconds > 300)" in source("RFLink.cpp")
 print("audit_structural_regressions=passed (hardware behavior not verified)")
