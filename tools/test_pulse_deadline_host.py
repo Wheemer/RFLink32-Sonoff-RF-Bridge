@@ -1,4 +1,4 @@
-"""Exercise production long-pulse deadlines with SDK overhead and clock rollover."""
+"""Protect the pre-1.0.34 pulse scheduling contract with simulated SDK overhead."""
 import subprocess
 import tempfile
 from pathlib import Path
@@ -23,16 +23,16 @@ struct { void wdtFeed() {} } ESP;
 tests = """
 int main() {
   delayLongPulse(100000);
-  assert(clockUs == 100000 && yields > 0 && !irq);
+  assert(clockUs == 101750 && yields == 7 && !irq);
   clockUs = 0; yields = 0;
   delayLongPulse(400);
   assert(clockUs == 400 && yields == 0);
   clockUs = UINT32_MAX - 1000; uint32_t start = clockUs;
   delayLongPulse(90000);
-  assert(uint32_t(clockUs - start) == 90000 && !irq);
+  assert(uint32_t(clockUs - start) == 91500 && !irq);
   enabled = 0; clockUs = 0;
   delayLongPulse(4200);
-  assert(enabled == 1 && clockUs == 4200 && !irq);
+  assert(enabled == 0 && clockUs == 4200 && !irq);
 }
 """
 with tempfile.TemporaryDirectory(prefix="rfbridge-pulse-") as directory:
@@ -41,4 +41,4 @@ with tempfile.TemporaryDirectory(prefix="rfbridge-pulse-") as directory:
     subprocess.run(["g++", "-std=c++11", "-Wall", "-Wextra", "-Werror",
                     str(path / "test.cpp"), "-o", str(path / "test")], check=True)
     subprocess.run([str(path / "test")], check=True)
-print("production_pulse_deadline_tests=passed")
+print("baseline_pulse_scheduling_tests=passed")

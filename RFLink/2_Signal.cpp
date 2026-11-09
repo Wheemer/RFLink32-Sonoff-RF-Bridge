@@ -1017,26 +1017,23 @@ namespace RFLink
 
     void delayLongPulse(unsigned long duration_us)
     {
-      if(duration_us <= 4000UL) {
+      if(duration_us <= 5000UL) {
         delayMicroseconds(duration_us);
         return;
       }
 
       // Long raw-code marks or spaces can be 80-110ms. Holding interrupts off
       // for either level starves ESP8266 Wi-Fi/watchdog and can reboot the bridge.
-      const uint32_t deadline = micros() + duration_us;
       interrupts();
-      while(true) {
-        const int32_t remaining = static_cast<int32_t>(deadline - micros());
-        if(remaining <= 0)
-          break;
-        unsigned long chunk = remaining > 16000 ? 16000UL : static_cast<unsigned long>(remaining);
+      while(duration_us >= 1000UL) {
+        unsigned long chunk = duration_us > 16000UL ? 16000UL : duration_us;
         delayMicroseconds(chunk);
-        if(static_cast<int32_t>(deadline - micros()) > 1000) {
-          yield();
-          ESP.wdtFeed();
-        }
+        duration_us -= chunk;
+        yield();
+        ESP.wdtFeed();
       }
+      if(duration_us > 0)
+        delayMicroseconds(duration_us);
       noInterrupts();
     }
 
