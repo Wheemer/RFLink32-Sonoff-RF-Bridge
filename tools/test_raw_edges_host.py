@@ -104,6 +104,22 @@ int main() {
  assert(!useTimedShortMarks(&s));
  s.Pulses[1] = 295;
  assert(useTimedShortMarks(&s));
+ // Long recorded tails must not divert otherwise short-mark frames to bitbang.
+ s.Pulses[s.Number - 1] = 11067; s.Pulses[s.Number] = 49260;
+ assert(useTimedShortMarks(&s));
+ clockUs = 0; edges.clear(); RawSendRF(&s);
+ assert(edges.size() == static_cast<unsigned>(s.Number));
+ assert(edges.back().second - edges[edges.size() - 2].second == 11067);
+ assert(clockUs - edges.back().second >= 49260);
+ s.Pulses[s.Number - 1] = 10738;
+ clockUs = 0; edges.clear(); RawSendRF(&s);
+ assert(edges.back().second - edges[edges.size() - 2].second == 10738);
+ s.Pulses[s.Number] = 1000;
+ assert(!useTimedShortMarks(&s));
+ s.Pulses[s.Number] = 49260;
+ s.Pulses[1] = 9147;
+ assert(!useTimedShortMarks(&s));
+ s.Pulses[1] = 295;
  // Respect repeat metadata and repeat delays without extra command repetitions.
  s.Number = 2; s.Pulses[1] = 300; s.Pulses[2] = 0;
  s.Repeats = 2; s.Delay = 80; clockUs = 0; edges.clear();

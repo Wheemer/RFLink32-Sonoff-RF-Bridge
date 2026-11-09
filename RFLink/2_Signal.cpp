@@ -1120,8 +1120,13 @@ namespace RFLink
       {
         // Preserve the existing long-mark path, including its working Fit frame.
         for(int index = 1; index < signal->Number; index += 2)
-          if(static_cast<uint32_t>(signal->Pulses[index]) * signal->Multiply > 4000UL)
-            return false;
+          if(static_cast<uint32_t>(signal->Pulses[index]) * signal->Multiply > 4000UL) {
+            // A terminal mark followed by a long trailing space is not an
+            // in-frame long-mark protocol. Timer1 emits that tail unchanged.
+            if(index != signal->Number - 1 ||
+               static_cast<uint32_t>(signal->Pulses[index + 1]) * signal->Multiply < 20000UL)
+              return false;
+          }
         return true;
       }
 
