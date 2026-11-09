@@ -8,6 +8,9 @@
 #include <Arduino.h>
 #include <errno.h>
 #include <limits.h>
+#ifdef ESP8266
+#include <ets_sys.h>
+#endif
 #include "1_Radio.h"
 #include "2_Signal.h"
 #include "5_Plugin.h"
@@ -1072,9 +1075,9 @@ namespace RFLink
 
       uint32_t IRAM_ATTR timedPulseCallback()
       {
-        const uint32_t now = ESP.getCycleCount();
+        const uint32_t now = micros();
         if(timedDone)
-          return microsecondsToClockCycles(10000);
+          return 10000;
         const int32_t remaining = static_cast<int32_t>(timedDeadline - now);
         if(remaining > 0)
           return static_cast<uint32_t>(remaining);
@@ -1088,8 +1091,8 @@ namespace RFLink
             const uint32_t duration = static_cast<uint32_t>(timedSignal->Pulses[++timedIndex]) * timedSignal->Multiply;
             if(duration == 0)
               continue;
-            timedDeadline = ESP.getCycleCount() + microsecondsToClockCycles(duration);
-            return microsecondsToClockCycles(duration);
+            timedDeadline = micros() + duration;
+            return duration;
           }
           if(timedRepeat < timedSignal->Repeats) {
             timedRepeat++;
@@ -1097,22 +1100,24 @@ namespace RFLink
             const uint32_t gap = static_cast<uint32_t>(timedSignal->Delay) * 1000UL;
             if(gap == 0)
               continue;
-            timedDeadline = ESP.getCycleCount() + microsecondsToClockCycles(gap);
-            return microsecondsToClockCycles(gap);
+            timedDeadline = micros() + gap;
+            return gap;
           }
           timedDone = true;
-          return microsecondsToClockCycles(10000);
+          return 10000;
         }
       }
 
       void IRAM_ATTR timedPulseInterrupt()
       {
-        const uint32_t cycles = timedPulseCallback();
+        const uint32_t remainingUs = timedPulseCallback();
         if(timedDone) {
           timer1_disable();
           return;
         }
-        const uint32_t ticks = cycles / 16U;
+        // Timer1 DIV16 runs at 5 MHz. CPU CCOUNT stops during SDK idle,
+        // so use the wall-clock microsecond timer for pulse deadlines.
+        const uint32_t ticks = remainingUs > 0x7fffffU / 5U ? 0x7fffffU : remainingUs * 5U;
         timer1_write(ticks > 0x7fffffU ? 0x7fffffU : (ticks ? ticks : 1U));
       }
 
@@ -1135,10 +1140,13 @@ namespace RFLink
         timedSignal = signal;
         timedIndex = 0;
         timedRepeat = 0;
-        timedDeadline = ESP.getCycleCount();
+        timedDeadline = micros();
         timedDone = false;
         timer1_disable();
-        timer1_attachInterrupt(timedPulseInterrupt);
+        // Match the core waveform driver's NMI timer ownership. The normal
+        // timer interrupt can be delayed by SDK critical sections.
+        ETS_FRC_TIMER1_INTR_ATTACH(nullptr, nullptr);
+        ETS_FRC_TIMER1_NMI_INTR_ATTACH(timedPulseInterrupt);
         timer1_enable(TIM_DIV16, TIM_EDGE, TIM_SINGLE);
         timer1_write(1);
         // The core timer owns the edges; SDK suspension cannot extend a pulse.
@@ -1147,7 +1155,8 @@ namespace RFLink
           ESP.wdtFeed();
         }
         timer1_disable();
-        timer1_detachInterrupt();
+        ETS_FRC_TIMER1_NMI_INTR_ATTACH(nullptr);
+        timer1_isr_init();
         timedSignal = nullptr;
       }
     }

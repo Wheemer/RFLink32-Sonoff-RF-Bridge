@@ -11,12 +11,14 @@ prefix = r'''
 #include <cassert>
 #include <vector>
 #include <utility>
+#include <stdexcept>
 using byte = unsigned char;
 uint32_t clockUs = 0, sdkUs = 0;
 bool irq = false;
 void (*timerFn)() = nullptr;
 uint32_t timerAt = 0;
 bool timerEnabled = false;
+bool timerNmi = false;
 constexpr int TIM_DIV16 = 1, TIM_EDGE = 0, TIM_SINGLE = 0;
 #define IRAM_ATTR
 #define microsecondsToClockCycles(us) (static_cast<uint32_t>(us) * 80U)
@@ -25,6 +27,14 @@ void timer1_detachInterrupt() { timerFn = nullptr; }
 void timer1_enable(int, int, int) { timerEnabled = true; }
 void timer1_disable() { timerEnabled = false; }
 void timer1_write(uint32_t ticks) { timerAt = clockUs + ((ticks + 4) / 5); }
+void ETS_FRC_TIMER1_INTR_ATTACH(void*, void*) {}
+void ETS_FRC_TIMER1_NMI_INTR_ATTACH(void (*fn)()) {
+ timerFn = fn; timerNmi = fn != nullptr;
+#ifdef TEST_NORMAL_IRQ
+ timerNmi = false;
+#endif
+}
+void timer1_isr_init() {}
 std::vector<std::pair<int, uint32_t>> edges;
 uint32_t micros() { return clockUs; }
 unsigned long millis() { return clockUs / 1000; }
@@ -36,13 +46,22 @@ void yield() {
  assert(irq);
  if(!timerFn || !timerEnabled) { clockUs += sdkUs; return; }
  const uint32_t end = clockUs + (sdkUs ? sdkUs : 1);
+ if(!timerNmi) {
+  // Model SDK critical sections deferring the ordinary interrupt until resume.
+  clockUs = end;
+  if(timerEnabled && static_cast<int32_t>(timerAt - end) <= 0) timerFn();
+  return;
+ }
  while(timerEnabled && static_cast<int32_t>(timerAt - end) <= 0) {
   clockUs = timerAt;
   timerFn();
  }
  clockUs = end;
 }
-struct { void wdtFeed() {} uint32_t getCycleCount() { return clockUs * 80U; } } ESP;
+struct {
+ void wdtFeed() {}
+ uint32_t getCycleCount() { throw std::runtime_error("CCOUNT is not a wall clock"); }
+} ESP;
 constexpr int HIGH = 1, LOW = 0;
 void digitalWrite(int, int value) { edges.emplace_back(value, clockUs); }
 struct GpioRegister {
@@ -76,6 +95,9 @@ int main() {
   s.Pulses[++s.Number] = 295; s.Pulses[++s.Number] = 9917;
  }
  for(uint32_t overhead : {0U, 250U, 3000U}) {
+#ifdef TEST_NORMAL_IRQ
+  if(overhead != 0) continue;
+#endif
   clockUs = UINT32_MAX - 1000; sdkUs = overhead; edges.clear(); irq = true;
   const uint32_t start = clockUs;
   RawSendRF(&s);
@@ -97,6 +119,10 @@ int main() {
   expected += s.Pulses[i + 1];
  }
 #ifdef ESP8266
+#ifdef TEST_NORMAL_IRQ
+ assert(mismatches > 0);
+ return 0;
+#endif
  assert(mismatches == 0);
  assert(timerFn == nullptr);
  // Long-mark signals retain the existing path.
@@ -145,8 +171,8 @@ int main() {
 with tempfile.TemporaryDirectory(prefix="rfbridge-edges-") as directory:
     path = Path(directory)
     (path / "test.cpp").write_text(prefix + source[start:end] + tests)
-    for defines in ([], ["-DESP8266"]):
+    for defines in ([], ["-DESP8266"], ["-DESP8266", "-DTEST_NORMAL_IRQ"]):
         subprocess.run(["g++", "-std=c++11", "-Wall", "-Wextra", "-Werror",
                         *defines, str(path / "test.cpp"), "-o", str(path / "test")], check=True)
         subprocess.run([str(path / "test")], check=True)
-print("raw_edges=legacy_overrun_reproduced; timer_edges_exact_under_sdk_stalls")
+print("raw_edges=legacy_and_normal_irq_corruption_reproduced; nmi_edges_exact_under_sdk_stalls")
