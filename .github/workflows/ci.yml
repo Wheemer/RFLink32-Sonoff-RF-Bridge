@@ -31,7 +31,6 @@ jobs:
           python tools/check_audit_regressions.py
           python tools/test_raw_parser_host.py
           python tools/test_json_builder_host.py
-          python tools/test_pulse_deadline_host.py
           python tools/test_raw_edges_host.py
           python tools/test_learn_low_memory_host.py
           python tools/check_listener_topology.py

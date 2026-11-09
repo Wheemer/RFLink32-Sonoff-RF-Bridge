@@ -8,9 +8,6 @@
 #include <Arduino.h>
 #include <errno.h>
 #include <limits.h>
-#ifdef ESP8266
-#include <ets_sys.h>
-#endif
 #include "1_Radio.h"
 #include "2_Signal.h"
 #include "5_Plugin.h"
@@ -1018,150 +1015,6 @@ namespace RFLink
       interrupts();
     }
 
-    void delayLongPulse(unsigned long duration_us)
-    {
-      if(duration_us <= 5000UL) {
-        delayMicroseconds(duration_us);
-        return;
-      }
-
-      // Service the SDK at the start of a space, inside its timing budget.
-      // Yielding after the full delay stretches each inter-frame sync gap.
-      const uint32_t deadline = micros() + duration_us;
-      while(true) {
-        interrupts();
-        yield();
-        ESP.wdtFeed();
-        noInterrupts();
-        const int32_t remaining = static_cast<int32_t>(deadline - micros());
-        if(remaining <= 0)
-          break;
-        const unsigned long chunk = remaining > 16000 ? 16000UL : static_cast<unsigned long>(remaining);
-        delayMicroseconds(chunk);
-        if(remaining <= 16000)
-          break;
-      }
-    }
-
-    void delayLongMark(unsigned long duration_us)
-    {
-      if(duration_us <= 4000UL) {
-        delayMicroseconds(duration_us);
-        return;
-      }
-      const uint32_t deadline = micros() + duration_us;
-      interrupts();
-      while(true) {
-        const int32_t remaining = static_cast<int32_t>(deadline - micros());
-        if(remaining <= 0)
-          break;
-        unsigned long chunk = remaining > 16000 ? 16000UL : static_cast<unsigned long>(remaining);
-        delayMicroseconds(chunk);
-        if(static_cast<int32_t>(deadline - micros()) > 1000) {
-          yield();
-          ESP.wdtFeed();
-        }
-      }
-      noInterrupts();
-    }
-
-#ifdef ESP8266
-    namespace {
-      RawSignalStruct *timedSignal = nullptr;
-      volatile bool timedDone = true;
-      uint16_t timedIndex = 0;
-      uint16_t timedRepeat = 0;
-      uint32_t timedDeadline = 0;
-
-      uint32_t IRAM_ATTR timedPulseCallback()
-      {
-        const uint32_t now = micros();
-        if(timedDone)
-          return 10000;
-        const int32_t remaining = static_cast<int32_t>(timedDeadline - now);
-        if(remaining > 0)
-          return static_cast<uint32_t>(remaining);
-        while(true) {
-          if(timedIndex < timedSignal->Number) {
-            // digitalWrite stops PWM/waveform engines; never call it from their ISR.
-            if(timedIndex & 1)
-              GPOC = 1UL << Radio::pins::TX_DATA;
-            else
-              GPOS = 1UL << Radio::pins::TX_DATA;
-            const uint32_t duration = static_cast<uint32_t>(timedSignal->Pulses[++timedIndex]) * timedSignal->Multiply;
-            if(duration == 0)
-              continue;
-            timedDeadline = micros() + duration;
-            return duration;
-          }
-          if(timedRepeat < timedSignal->Repeats) {
-            timedRepeat++;
-            timedIndex = 0;
-            const uint32_t gap = static_cast<uint32_t>(timedSignal->Delay) * 1000UL;
-            if(gap == 0)
-              continue;
-            timedDeadline = micros() + gap;
-            return gap;
-          }
-          timedDone = true;
-          return 10000;
-        }
-      }
-
-      void IRAM_ATTR timedPulseInterrupt()
-      {
-        const uint32_t remainingUs = timedPulseCallback();
-        if(timedDone) {
-          timer1_disable();
-          return;
-        }
-        // Timer1 DIV16 runs at 5 MHz. CPU CCOUNT stops during SDK idle,
-        // so use the wall-clock microsecond timer for pulse deadlines.
-        const uint32_t ticks = remainingUs > 0x7fffffU / 5U ? 0x7fffffU : remainingUs * 5U;
-        timer1_write(ticks > 0x7fffffU ? 0x7fffffU : (ticks ? ticks : 1U));
-      }
-
-      bool useTimedShortMarks(const RawSignalStruct *signal)
-      {
-        // Preserve the existing long-mark path, including its working Fit frame.
-        for(int index = 1; index < signal->Number; index += 2)
-          if(static_cast<uint32_t>(signal->Pulses[index]) * signal->Multiply > 4000UL) {
-            // A terminal mark followed by a long trailing space is not an
-            // in-frame long-mark protocol. Timer1 emits that tail unchanged.
-            if(index != signal->Number - 1 ||
-               static_cast<uint32_t>(signal->Pulses[index + 1]) * signal->Multiply < 20000UL)
-              return false;
-          }
-        return true;
-      }
-
-      void sendTimedShortMarks(RawSignalStruct *signal)
-      {
-        timedSignal = signal;
-        timedIndex = 0;
-        timedRepeat = 0;
-        timedDeadline = micros();
-        timedDone = false;
-        timer1_disable();
-        // Match the core waveform driver's NMI timer ownership. The normal
-        // timer interrupt can be delayed by SDK critical sections.
-        ETS_FRC_TIMER1_INTR_ATTACH(nullptr, nullptr);
-        ETS_FRC_TIMER1_NMI_INTR_ATTACH(timedPulseInterrupt);
-        timer1_enable(TIM_DIV16, TIM_EDGE, TIM_SINGLE);
-        timer1_write(1);
-        // The core timer owns the edges; SDK suspension cannot extend a pulse.
-        while(!timedDone) {
-          yield();
-          ESP.wdtFeed();
-        }
-        timer1_disable();
-        ETS_FRC_TIMER1_NMI_INTR_ATTACH(nullptr);
-        timer1_isr_init();
-        timedSignal = nullptr;
-      }
-    }
-#endif
-
     void RawSendRF(RawSignalStruct *signal)
     {
       int x;
@@ -1179,31 +1032,21 @@ namespace RFLink
 
       Radio::set_Radio_mode(Radio::States::Radio_TX);
 
-#ifdef ESP8266
-      if(useTimedShortMarks(signal)) {
-        sendTimedShortMarks(signal);
-      } else
-#endif
-      {
       for (uint16_t y = 0; y <= signal->Repeats; y++)
       { // repeat transmitting the RF code
         x = 1;
         noInterrupts();
         while (x < signal->Number)
         {
-          unsigned long high_us = (unsigned long)signal->Pulses[x++] * signal->Multiply;
-          unsigned long low_us = (unsigned long)signal->Pulses[x++] * signal->Multiply;
           digitalWrite(Radio::pins::TX_DATA, HIGH);
-          delayLongMark(high_us);
+          delayMicroseconds(signal->Pulses[x++] * signal->Multiply);
           digitalWrite(Radio::pins::TX_DATA, LOW);
-          delayLongPulse(low_us);
+          delayMicroseconds(signal->Pulses[x++] * signal->Multiply);
         }
         interrupts();
         if (y != signal->Repeats)
           delay(signal->Delay); // gap between repeats, outside the noInterrupts region
       }
-      }
-
       Radio::set_Radio_mode(Radio::States::Radio_RX);
       runtime::txFinishedCount++;
       runtime::txLastFinishedMs = millis();
