@@ -1022,19 +1022,22 @@ namespace RFLink
         return;
       }
 
-      // Long raw-code marks or spaces can be 80-110ms. Holding interrupts off
-      // for either level starves ESP8266 Wi-Fi/watchdog and can reboot the bridge.
-      interrupts();
-      while(duration_us >= 1000UL) {
-        unsigned long chunk = duration_us > 16000UL ? 16000UL : duration_us;
-        delayMicroseconds(chunk);
-        duration_us -= chunk;
+      // Service the SDK at the start of a space, inside its timing budget.
+      // Yielding after the full delay stretches each inter-frame sync gap.
+      const uint32_t deadline = micros() + duration_us;
+      while(true) {
+        interrupts();
         yield();
         ESP.wdtFeed();
+        noInterrupts();
+        const int32_t remaining = static_cast<int32_t>(deadline - micros());
+        if(remaining <= 0)
+          break;
+        const unsigned long chunk = remaining > 16000 ? 16000UL : static_cast<unsigned long>(remaining);
+        delayMicroseconds(chunk);
+        if(remaining <= 16000)
+          break;
       }
-      if(duration_us > 0)
-        delayMicroseconds(duration_us);
-      noInterrupts();
     }
 
     void delayLongMark(unsigned long duration_us)
