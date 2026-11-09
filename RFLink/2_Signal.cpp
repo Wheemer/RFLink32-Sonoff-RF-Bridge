@@ -241,7 +241,7 @@ namespace RFLink
       // Applying changes will happen in mainLoop()
       if (triggerChanges && changesDetected)
       {
-        Serial.println(F("Signal parameters have changed."));
+        Serial.println(F("Signal config changed"));
         if (params::async_mode_enabled && AsyncSignalScanner::isStopped())
         {
           AsyncSignalScanner::startScanning();
@@ -754,7 +754,7 @@ namespace RFLink
       {
         if (!params::async_mode_enabled)
         {
-          Serial.println(F("Start of async Receiver was requested but it's not enabled!"));
+          Serial.println(F("Async RX is disabled"));
           return;
         }
 
@@ -854,7 +854,7 @@ namespace RFLink
         }
 
         /*if (digitalRead(RX_DATA) == HIGH) {   // We have a corrupted packet here
-        Serial.println("corrupted signal ends with HIGH");
+        Serial.println("RX ended HIGH");
         RawSignal.Number = 0;
         RawSignal.Time = 0;
         nextPulseTimeoutTime_us = 0;
@@ -1062,6 +1062,92 @@ namespace RFLink
       noInterrupts();
     }
 
+#ifdef ESP8266
+    namespace {
+      RawSignalStruct *timedSignal = nullptr;
+      volatile bool timedDone = true;
+      uint16_t timedIndex = 0;
+      uint16_t timedRepeat = 0;
+      uint32_t timedDeadline = 0;
+
+      uint32_t IRAM_ATTR timedPulseCallback()
+      {
+        const uint32_t now = ESP.getCycleCount();
+        if(timedDone)
+          return microsecondsToClockCycles(10000);
+        const int32_t remaining = static_cast<int32_t>(timedDeadline - now);
+        if(remaining > 0)
+          return static_cast<uint32_t>(remaining);
+        while(true) {
+          if(timedIndex < timedSignal->Number) {
+            // digitalWrite stops PWM/waveform engines; never call it from their ISR.
+            if(timedIndex & 1)
+              GPOC = 1UL << Radio::pins::TX_DATA;
+            else
+              GPOS = 1UL << Radio::pins::TX_DATA;
+            const uint32_t duration = static_cast<uint32_t>(timedSignal->Pulses[++timedIndex]) * timedSignal->Multiply;
+            if(duration == 0)
+              continue;
+            timedDeadline = ESP.getCycleCount() + microsecondsToClockCycles(duration);
+            return microsecondsToClockCycles(duration);
+          }
+          if(timedRepeat < timedSignal->Repeats) {
+            timedRepeat++;
+            timedIndex = 0;
+            const uint32_t gap = static_cast<uint32_t>(timedSignal->Delay) * 1000UL;
+            if(gap == 0)
+              continue;
+            timedDeadline = ESP.getCycleCount() + microsecondsToClockCycles(gap);
+            return microsecondsToClockCycles(gap);
+          }
+          timedDone = true;
+          return microsecondsToClockCycles(10000);
+        }
+      }
+
+      void IRAM_ATTR timedPulseInterrupt()
+      {
+        const uint32_t cycles = timedPulseCallback();
+        if(timedDone) {
+          timer1_disable();
+          return;
+        }
+        const uint32_t ticks = cycles / 16U;
+        timer1_write(ticks > 0x7fffffU ? 0x7fffffU : (ticks ? ticks : 1U));
+      }
+
+      bool useTimedShortMarks(const RawSignalStruct *signal)
+      {
+        // Preserve the existing long-mark path, including its working Fit frame.
+        for(int index = 1; index < signal->Number; index += 2)
+          if(static_cast<uint32_t>(signal->Pulses[index]) * signal->Multiply > 4000UL)
+            return false;
+        return true;
+      }
+
+      void sendTimedShortMarks(RawSignalStruct *signal)
+      {
+        timedSignal = signal;
+        timedIndex = 0;
+        timedRepeat = 0;
+        timedDeadline = ESP.getCycleCount();
+        timedDone = false;
+        timer1_disable();
+        timer1_attachInterrupt(timedPulseInterrupt);
+        timer1_enable(TIM_DIV16, TIM_EDGE, TIM_SINGLE);
+        timer1_write(1);
+        // The core timer owns the edges; SDK suspension cannot extend a pulse.
+        while(!timedDone) {
+          yield();
+          ESP.wdtFeed();
+        }
+        timer1_disable();
+        timer1_detachInterrupt();
+        timedSignal = nullptr;
+      }
+    }
+#endif
+
     void RawSendRF(RawSignalStruct *signal)
     {
       int x;
@@ -1079,6 +1165,12 @@ namespace RFLink
 
       Radio::set_Radio_mode(Radio::States::Radio_TX);
 
+#ifdef ESP8266
+      if(useTimedShortMarks(signal)) {
+        sendTimedShortMarks(signal);
+      } else
+#endif
+      {
       for (uint16_t y = 0; y <= signal->Repeats; y++)
       { // repeat transmitting the RF code
         x = 1;
@@ -1095,6 +1187,7 @@ namespace RFLink
         interrupts();
         if (y != signal->Repeats)
           delay(signal->Delay); // gap between repeats, outside the noInterrupts region
+      }
       }
 
       Radio::set_Radio_mode(Radio::States::Radio_RX);
@@ -1189,6 +1282,7 @@ namespace RFLink
       auto failTxParse = [](const char *message) {
         setTxLastError(message);
         runtime::txFailedCount++;
+        Serial.printf_P(PSTR("RF TX parse: %s\n"), message);
         return false;
       };
 
@@ -1212,23 +1306,20 @@ namespace RFLink
       int pulseCount = 0;
       unsigned long longest_us = 0;
       if(!scanJsonPulses(json_str, signal, false, 1, pulseCount, longest_us)) {
-        Serial.println(F("An error occured while reading json"));
         return failTxParse("invalid sendRF JSON");
       }
       signal.Number = pulseCount;
 
       if(signal.Number < 2) {
-        Serial.println(F("error, your signal has 0 pulse defined!"));
         return failTxParse("not enough pulses");
       }
 
       if(signal.Number > RAW_BUFFER_SIZE) {
-        Serial.printf_P(PSTR("error, your Signal has %i pulses while this supports only %i\r\n"), signal.Number, RAW_BUFFER_SIZE);
         return failTxParse("too many pulses");
       }
 
       if((signal.Number % 2) != 0) {
-        Serial.printf_P(PSTR("sendRF: trimming final unpaired pulse from odd pulse count (%i)\r\n"), signal.Number);
+        Serial.printf_P(PSTR("RF trim=%i\n"), signal.Number);
         signal.Number--;
       }
 
@@ -1239,17 +1330,15 @@ namespace RFLink
         multiply++;
 
       if (multiply > 255UL) {
-        Serial.printf_P(PSTR("error, your Signal has a %lu us pulse which is too long to transmit\r\n"), longest_us);
         return failTxParse("pulse too long");
       }
 
       if (multiply != params::sample_rate)
-        Serial.printf_P(PSTR("sendRF: scaling pulses by %lu to fit %lu us\r\n"), multiply, longest_us);
+        Serial.printf_P(PSTR("RF scale %lu/%lu\n"), multiply, longest_us);
 
       signal.Multiply = (byte)multiply;
 
       if(!scanJsonPulses(json_str, signal, true, multiply, pulseCount, longest_us)) {
-        Serial.println(F("An error occured while reading json"));
         return failTxParse("invalid sendRF pulses");
       }
 
@@ -1261,17 +1350,11 @@ namespace RFLink
         return failTxParse("invalid delay");
 
       if(repeat < 0 || repeat > 100) {
-        Serial.printf_P(PSTR("error, repeat value %i is outside supported range 0..100\r\n"), repeat);
-        setTxLastError("repeat out of range");
-        runtime::txFailedCount++;
-        return false;
+        return failTxParse("repeat out of range");
       }
 
       if(delay < 0 || delay > 10000) {
-        Serial.printf_P(PSTR("error, delay value %i is outside supported range 0..10000ms\r\n"), delay);
-        setTxLastError("delay out of range");
-        runtime::txFailedCount++;
-        return false;
+        return failTxParse("delay out of range");
       }
 
       signal.Repeats = repeat;
@@ -1284,10 +1367,7 @@ namespace RFLink
         ((uint64_t)signal.Delay * (uint64_t)signal.Repeats);
 
       if(estimated_ms > 120000ULL) {
-        Serial.printf_P(PSTR("error, estimated transmit time is too long\r\n"));
-        setTxLastError("estimated tx too long");
-        runtime::txFailedCount++;
-        return false;
+        return failTxParse("estimated tx too long");
       }
       runtime::txLastEstimatedMs = (unsigned long)estimated_ms;
 
@@ -1303,13 +1383,13 @@ namespace RFLink
 
     bool executeCliCommand(char *cmd)
     {
-      static const char error_command_aborted[] PROGMEM = "An error occurred, invalid signal was given. Command aborted!";
+      static const char error_command_aborted[] PROGMEM = "RF command aborted";
 
       char *commaIndex = strchr(cmd, ';');
 
       if (commaIndex == nullptr)
       {
-        Serial.println(F("Error : failed to find ending ';' for the command"));
+        Serial.println(F("Missing command ';'"));
         return false;
       }
 
@@ -1322,7 +1402,7 @@ namespace RFLink
         if(Radio::pins::TX_DATA == NOT_A_PIN) {
           setTxLastError("TX_DATA pin undefined");
           runtime::txFailedCount++;
-          Serial.println(F("ERROR: TX_DATA PIN is not defined!"));
+          Serial.println(F("TX_DATA undefined"));
           return false;
         }
 
@@ -1355,10 +1435,10 @@ namespace RFLink
           return false;
         }
 
-        Serial.printf_P(PSTR("Sending your signal to Plugins (%i pulses)\r\n"), RawSignal.Number);
+        Serial.printf_P(PSTR("Decode pulses=%i\n"), RawSignal.Number);
 
         if (!PluginRXCall(0, 0)){
-          Serial.println(F("No plugin has matched your signal"));
+          Serial.println(F("No decoder matched"));
         }
         else {
           RFLink::sendMsgFromBuffer();
@@ -1379,12 +1459,12 @@ namespace RFLink
 
         while(RawSignal.Number >= (int)params::min_raw_pulses) {
 
-          Serial.printf_P(PSTR("Sending your signal to Plugins (%i pulses)\r\n"), RawSignal.Number);
+          Serial.printf_P(PSTR("Decode pulses=%i\n"), RawSignal.Number);
           displaySignal(RawSignal);
           RawSignal.readyForDecoder = true;
 
           if (!PluginRXCall(0, 0)) {
-            Serial.println(F("No plugin has matched your signal"));
+            Serial.println(F("No decoder matched"));
           }
           else {
             RFLink::sendMsgFromBuffer();
@@ -1414,7 +1494,7 @@ namespace RFLink
       }
       else
       {
-        Serial.printf_P(PSTR("Error : unknown command '%s'\r\n"), cmd);
+        Serial.printf_P(PSTR("RF unknown: %s\n"), cmd);
       }
 
       RawSignal.readyForDecoder = false;
