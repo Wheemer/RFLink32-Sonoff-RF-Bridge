@@ -33,6 +33,12 @@ int main() {
   enabled = 0; clockUs = 0;
   delayLongPulse(4200);
   assert(enabled == 0 && clockUs == 4200 && !irq);
+  clockUs = 0; yields = 0;
+  delayLongMark(9147);
+  assert(clockUs == 9147 && yields == 0 && !irq);
+  clockUs = 0; yields = 0;
+  delayLongPulse(9884);
+  assert(clockUs == 10134 && yields == 1 && !irq);
 }
 """
 with tempfile.TemporaryDirectory(prefix="rfbridge-pulse-") as directory:

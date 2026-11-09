@@ -62,7 +62,7 @@ def main() -> None:
 
     for call in (
         "void delayLongPulse(unsigned long duration_us)",
-        "delayLongPulse(high_us);",
+        "delayLongMark(high_us);",
         "delayLongPulse(low_us);",
         "const uint32_t started_us = micros();",
         "runtime::txLastElapsedMs = (micros() - started_us) / 1000UL;",

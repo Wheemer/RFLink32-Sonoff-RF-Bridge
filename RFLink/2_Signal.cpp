@@ -1037,6 +1037,28 @@ namespace RFLink
       noInterrupts();
     }
 
+    void delayLongMark(unsigned long duration_us)
+    {
+      if(duration_us <= 4000UL) {
+        delayMicroseconds(duration_us);
+        return;
+      }
+      const uint32_t deadline = micros() + duration_us;
+      interrupts();
+      while(true) {
+        const int32_t remaining = static_cast<int32_t>(deadline - micros());
+        if(remaining <= 0)
+          break;
+        unsigned long chunk = remaining > 16000 ? 16000UL : static_cast<unsigned long>(remaining);
+        delayMicroseconds(chunk);
+        if(static_cast<int32_t>(deadline - micros()) > 1000) {
+          yield();
+          ESP.wdtFeed();
+        }
+      }
+      noInterrupts();
+    }
+
     void RawSendRF(RawSignalStruct *signal)
     {
       int x;
@@ -1063,7 +1085,7 @@ namespace RFLink
           unsigned long high_us = (unsigned long)signal->Pulses[x++] * signal->Multiply;
           unsigned long low_us = (unsigned long)signal->Pulses[x++] * signal->Multiply;
           digitalWrite(Radio::pins::TX_DATA, HIGH);
-          delayLongPulse(high_us);
+          delayLongMark(high_us);
           digitalWrite(Radio::pins::TX_DATA, LOW);
           delayLongPulse(low_us);
         }
@@ -1313,7 +1335,7 @@ namespace RFLink
           return false;
         }
 
-        Serial.printf_P(PSTR("** sending RF signal with the following properties: pulses=%i, repeat=%i, delay=%i, multiply=%i... "), txSignal.Number, txSignal.Repeats, txSignal.Delay, txSignal.Multiply);
+        Serial.printf_P(PSTR("RF TX pulses=%i repeats=%i "), txSignal.Number, txSignal.Repeats);
         yield();
         ESP.wdtFeed();
         RawSendRF(&txSignal);
