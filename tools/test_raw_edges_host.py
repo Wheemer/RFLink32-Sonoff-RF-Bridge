@@ -1,4 +1,6 @@
 """Compare the production emitter against the original ed800fe implementation."""
+import json
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -63,6 +65,15 @@ int main() {
 '''
 with tempfile.TemporaryDirectory(prefix="rfbridge-stock-edges-") as directory:
     path = Path(directory)
+    if fixture_path := os.environ.get("RFBRIDGE_WAVEFORMS"):
+        extra = ""
+        for fixture in json.loads(Path(fixture_path).read_text()).values():
+            pulses = fixture["pulses"]
+            extra += f"s.Number={len(pulses)}; s.Multiply=1; "
+            extra += f"s.Repeats={fixture.get('repeat', 0)}; s.Delay={fixture.get('delay', 0)};\n"
+            extra += "".join(f"s.Pulses[{i}]={v};" for i, v in enumerate(pulses, 1))
+            extra += "compare(s);\n"
+        tests = tests.rsplit("}", 1)[0] + extra + "}"
     code = prefix + emitter + "\n#define RawSendRF StockRawSendRF\n" + stock + "\n#undef RawSendRF\n" + tests
     (path / "test.cpp").write_text(code)
     subprocess.run(["g++", "-std=c++11", "-Wall", "-Wextra", "-Werror",
