@@ -33,7 +33,11 @@ namespace RFLink { namespace Portal {
           };
 
           WsJob activeJob;
-          bool jobInProgress = false;
+          // The AsyncWebServer callback produces jobs while RFLink's main
+          // loop consumes them. The flag is the publish point: populate
+          // activeJob first, then set it so the main loop cannot cache an
+          // earlier false value and strand a command indefinitely.
+          volatile bool jobInProgress = false;
 
           static char wsOutbound[2300];
           static bool wsInboundActive = false;
