@@ -506,8 +506,10 @@ namespace RFLink { namespace Wifi {
           } else {
             WiFi.config(IPAddress((uint32_t) 0), IPAddress((uint32_t) 0), IPAddress((uint32_t) 0));
           }
-          WiFi.setAutoConnect(true);
-          WiFi.setAutoReconnect(true);
+          // Explicit association and the reconnect timer own station retries.
+          // Do not restart association while the SDK is retrying on its own.
+          WiFi.setAutoConnect(false);
+          WiFi.setAutoReconnect(false);
         }
 
         void startClientAssociation() {

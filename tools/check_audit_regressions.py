@@ -21,6 +21,9 @@ retry = wifi.split("void maintainStationReconnect()", 1)[1].split(
 )[0]
 assert "scanNetworks" not in retry
 assert "persistent(true)" not in wifi
+assert "WiFi.setAutoConnect(true)" not in wifi
+assert "WiFi.setAutoReconnect(true)" not in wifi
+assert retry.count("startClientAssociation();") == 1
 ws = source("12_Portal_ws.cpp")
 assert "!jobExecuting" in ws
 assert ws.index("jobExecuting = true;", ws.index("void processWebSocketJobs")) < ws.index(
