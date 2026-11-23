@@ -6,6 +6,7 @@
 #include <AsyncJson.h>
 #include "2_Signal.h"
 #include "3_Serial.h"
+#include "10_Wifi.h"
 #include "12_Portal.h"
 #include "13_Update.h"
 
@@ -49,6 +50,9 @@ namespace RFLink { namespace Portal {
           static size_t wsInboundReceived = 0;
           static size_t wsFrameReceived = 0;
           static uint32_t wsFrameNumber = 0;
+          static uint32_t wsConnectCount = 0;
+          static uint32_t wsDisconnectCount = 0;
+          static uint32_t wsErrorCount = 0;
           // Incoming WebSocket JSON is parsed in-place in activeJob.command.
           // Only the object metadata needs ArduinoJson storage; keeping a
           // second 2 KB receive buffer here starved TCP allocations.
@@ -246,11 +250,9 @@ namespace RFLink { namespace Portal {
               return false;
 
             int commandPulseCount = pulseCount - (pulseCount % 2);
+            // WebSocket callbacks also serialize into wsOutbound. Do not
+            // yield while its cursor points into a partially built capture.
             for(int index = 1; index <= commandPulseCount; index++) {
-              if((index & 0x1F) == 0) {
-                yield();
-                ESP.wdtFeed();
-              }
               unsigned long pulseUs = (unsigned long)pulses[index] *
                 (unsigned long)(multiply == 0 ? 1 : multiply);
               if(!(appendJsonText(cursor, remaining, index == 1 ? "" : ",") &&
@@ -357,13 +359,16 @@ namespace RFLink { namespace Portal {
               }
             }
 
-            if(!wsSendJsonToClient(client, wsStatusDoc))
+            const bool replyQueued = wsSendJsonToClient(client, wsStatusDoc);
+            if(!replyQueued)
               Serial.println(F("WebSocket job result delivery failed"));
             if(activeJob.type == WsJobType::Update) {
-              // The client has its acknowledgement. Release API WebSocket
-              // allocations before the ESP8266 updater allocates its buffers.
-              apiWebSocket.closeAll();
-              RFLink::UpdateSecurity::beginHandoff();
+              // Give the queued reply time to leave before prepareForUpdate()
+              // closes the socket. Never start a fetch after enqueue failure.
+              if(replyQueued)
+                RFLink::UpdateSecurity::beginHandoff();
+              else
+                RFLink::UpdateSecurity::cancelHandoff();
             }
             activeJob.type = WsJobType::None;
             jobInProgress = false;
@@ -439,6 +444,26 @@ namespace RFLink { namespace Portal {
                   status[F("update_error")] = RFLink::UpdateSecurity::lastError();
               }
               wsSendJsonToClient(client, wsStatusDoc);
+              return;
+            }
+
+            if(strcmp(type, "network_status") == 0) {
+              StaticJsonDocument<512> reply;
+              JsonObject status = reply.to<JsonObject>();
+              status[F("type")] = F("network_status");
+              status[F("id")] = requestId;
+              status[F("millis")] = millis();
+              status[F("listener_starts")] = apiListenerStartCount();
+              status[F("ws_connects")] = wsConnectCount;
+              status[F("ws_disconnects")] = wsDisconnectCount;
+              status[F("ws_errors")] = wsErrorCount;
+              RFLink::Wifi::getConnectionDiagnostics(status);
+              wsSendJsonToClient(client, reply);
+              return;
+            }
+
+            if(RFLink::UpdateSecurity::isPending()) {
+              wsSendError(client, requestId, F("OTA handoff in progress"));
               return;
             }
 
@@ -548,6 +573,7 @@ namespace RFLink { namespace Portal {
             (void) server;
             (void) arg;
             if(type == WS_EVT_CONNECT) {
+              wsConnectCount++;
               // The API is event-driven. A slow client may miss a transient
               // event, but must not trigger a reconnect loop that consumes
               // the ESP8285 heap.
@@ -558,6 +584,7 @@ namespace RFLink { namespace Portal {
               return;
             }
             if(type == WS_EVT_DISCONNECT) {
+              wsDisconnectCount++;
               if(client != nullptr) {
                 if(wsInboundActive && wsInboundClientId == client->id()) {
                   wsInboundActive = false;
@@ -624,6 +651,7 @@ namespace RFLink { namespace Portal {
               return;
             }
             if(type == WS_EVT_ERROR) {
+              wsErrorCount++;
               Serial.println(F("WebSocket client error"));
             }
           }

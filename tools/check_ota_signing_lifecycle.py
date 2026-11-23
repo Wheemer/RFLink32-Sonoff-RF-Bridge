@@ -34,8 +34,11 @@ def main() -> None:
     handoff = portal_source.index("RFLink::UpdateSecurity::beginHandoff();")
     if handoff <= acknowledgement:
         raise SystemExit("OTA handoff begins before the update acknowledgement is queued.")
-    if "apiWebSocket.closeAll();" not in portal_source[acknowledgement:handoff + 128]:
-        raise SystemExit("OTA handoff must release API WebSocket allocations before flashing.")
+    reply_path = portal_source[acknowledgement:handoff + 128]
+    if ("if(replyQueued)" not in reply_path
+            or "cancelHandoff();" not in reply_path
+            or "apiWebSocket.closeAll();" in reply_path):
+        raise SystemExit("OTA must cancel on enqueue failure and keep the socket alive for the reply.")
     portal_header = Path("RFLink/12_Portal.h").read_text(encoding="utf-8")
     portal_runtime = Path("RFLink/12_Portal.cpp").read_text(encoding="utf-8")
     if "void prepareForUpdate();" not in portal_header:
@@ -55,6 +58,10 @@ def main() -> None:
     update_call = source.index("fetchAndApplyUpdate(", update_handoff)
     if "RFLink::Portal::prepareForUpdate();" not in source[update_handoff:update_call]:
         raise SystemExit("OTA update must stop the API server before constructing its HTTP client.")
+    staged = source.index("if(!persistState(UpdateResult::Staged", update_call)
+    reboot = source.index("ESP.restart();", staged)
+    if "return;" in source[staged:reboot]:
+        raise SystemExit("A failed diagnostic write must not block reboot after a verified OTA.")
     print("ota_signing_lifecycle=filesystem_and_api_handoff_verified")
 
 

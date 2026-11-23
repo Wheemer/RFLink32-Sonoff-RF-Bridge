@@ -224,6 +224,14 @@ namespace RFLink::UpdateSecurity {
     updatePending = true;
   }
 
+  void cancelHandoff()
+  {
+    updateHandoffReady = false;
+    updatePending = false;
+    pendingUpdateUrl[0] = 0;
+    persistState(UpdateResult::Failed, -2, "OTA acknowledgement could not be queued");
+  }
+
   void maintain()
   {
     if(!updatePending || !updateHandoffReady ||
@@ -266,10 +274,9 @@ namespace RFLink::UpdateSecurity {
     if(!persistState(UpdateResult::Staged, 0, "Firmware staged; restarting")) {
       snprintf(updateLastError, sizeof(updateLastError), "Could not persist OTA staged state");
       Serial.println(updateLastError);
-      if(resumeScanning)
-        RFLink::Signal::AsyncSignalScanner::startScanning();
-      return;
     }
+    // The verified image is already staged. A diagnostic write must not
+    // leave a pending bootloader update to activate on an unrelated restart.
     RFLink::markRebootSource(RFLink::RebootSource::SignedUpdate);
     ESP.restart();
   }
@@ -314,6 +321,7 @@ namespace RFLink::UpdateSecurity {
   void setupPersistentState() {}
   bool schedule(const char *, const char *&error) { error = "Updates require ESP8266"; return false; }
   void beginHandoff() {}
+  void cancelHandoff() {}
   void maintain() {}
   bool isPending() { return false; }
   const char *lastError() { return ""; }

@@ -25,6 +25,7 @@ namespace RFLink {
         // created from the main loop, never directly from a Wi-Fi callback.
         void notifyNetworkReady();
         void maintainApiServer();
+        uint32_t apiListenerStartCount();
         void startSetupServer();
         void stopSetupServer();
 

@@ -6,6 +6,7 @@
 
 #include "10_Wifi.h"
 #include "2_Signal.h"
+#include "13_Update.h"
 #ifndef RFLINK_PORTAL_DISABLED
 #include "12_Portal.h"
 #endif
@@ -65,9 +66,20 @@ namespace RFLink { namespace Wifi {
         bool setupAccessPointShutdownRequested = false;
         volatile bool stationGotIpPending = false;
         volatile bool stationDisconnectedPending = false;
+        volatile uint32_t stationDisconnectCount = 0;
+        volatile uint32_t stationDisconnectAt = 0;
+        volatile uint32_t stationDisconnectReason = 0;
+        uint32_t stationGotIpCount = 0;
+        uint32_t stationAssociationCount = 0;
         unsigned long setupAccessPointClientConnectedAt = 0;
         unsigned long stationReconnectAt = 0;
         uint8_t stationReconnectAttempts = 0;
+#ifdef ESP8266
+        bool stationCyclePending = false;
+        uint32_t stationCycles = 0;
+        constexpr uint8_t STATION_RETRIES_BEFORE_CYCLE = 3;
+        constexpr uint32_t STATION_OFF_MS = 1000;
+#endif
         const unsigned long STATION_RECONNECT_INITIAL_MS = 15000;
         const unsigned long STATION_RECONNECT_MAX_MS = 30000;
         const unsigned long SETUP_AP_SHUTDOWN_GRACE_MS = 1000;
@@ -476,18 +488,17 @@ namespace RFLink { namespace Wifi {
         void clearStationReconnectSchedule() {
           stationReconnectAt = 0;
           stationReconnectAttempts = 0;
-        }
-
-        unsigned long stationReconnectDelayMs() {
-          uint8_t shift = stationReconnectAttempts > 5 ? 5 : stationReconnectAttempts;
-          unsigned long delayMs = STATION_RECONNECT_INITIAL_MS << shift;
-          return delayMs > STATION_RECONNECT_MAX_MS ? STATION_RECONNECT_MAX_MS : delayMs;
+#ifdef ESP8266
+          stationCyclePending = false;
+#endif
         }
 
         void scheduleStationReconnect(unsigned long delayMs = STATION_RECONNECT_INITIAL_MS) {
           if(!params::client_enabled || WiFi.isConnected())
             return;
           stationReconnectAt = millis() + delayMs;
+          if(stationReconnectAt == 0)
+            stationReconnectAt = 1;
         }
 
         void configureClientWifi() {
@@ -520,11 +531,14 @@ namespace RFLink { namespace Wifi {
             WiFi.mode((mode & WIFI_AP) != 0 ? WIFI_AP_STA : WIFI_STA);
           Serial.print(F("Starting WiFi association with SSID "));
           Serial.println(params::client_ssid);
+          stationAssociationCount++;
           WiFi.begin(params::client_ssid.c_str(), params::client_password.c_str());
         }
 
         void maintainStationReconnect() {
-          if(!params::client_enabled || WiFi.isConnected()) {
+          if(RFLink::UpdateSecurity::isPending())
+            return;
+          if(!params::client_enabled || params::client_ssid.length() == 0 || WiFi.isConnected()) {
             clearStationReconnectSchedule();
             return;
           }
@@ -532,13 +546,39 @@ namespace RFLink { namespace Wifi {
             scheduleStationReconnect();
             return;
           }
-          if((long)(millis() - stationReconnectAt) < 0)
+          if(static_cast<int32_t>(millis() - stationReconnectAt) < 0)
             return;
+#ifdef ESP8266
+          if(stationCyclePending) {
+            if(!WiFi.enableSTA(true)) {
+              scheduleStationReconnect(STATION_RECONNECT_MAX_MS);
+              return;
+            }
+            stationCyclePending = false;
+            configureClientWifi();
+            startClientAssociation();
+            scheduleStationReconnect(STATION_RECONNECT_MAX_MS);
+            return;
+          }
+          if(stationReconnectAttempts >= STATION_RETRIES_BEFORE_CYCLE) {
+            // Drop only STA, preserving an active provisioning AP and the
+            // credentials owned by Config. The cooperative loop stays live.
+            if(WiFi.enableSTA(false)) {
+              stationCyclePending = true;
+              stationReconnectAttempts = 0;
+              stationCycles++;
+              scheduleStationReconnect(STATION_OFF_MS);
+              return;
+            }
+            scheduleStationReconnect(STATION_RECONNECT_MAX_MS);
+            return;
+          }
+#endif
           if(stationReconnectAttempts < 255)
             stationReconnectAttempts++;
           Serial.printf_P(PSTR("WiFi reconnect attempt %u\\r\\n"), stationReconnectAttempts);
           startClientAssociation();
-          scheduleStationReconnect(stationReconnectDelayMs());
+          scheduleStationReconnect(STATION_RECONNECT_MAX_MS);
         }
 
         void resetClientWifi() {
@@ -684,8 +724,11 @@ namespace RFLink { namespace Wifi {
           if(!stationGotIpPending)
             return;
 
-          clearStationReconnectSchedule();
           stationGotIpPending = false;
+          if(!WiFi.isConnected())
+            return;
+          clearStationReconnectSchedule();
+          stationGotIpCount++;
           Serial.print(F("WiFi Client has received a new IP: "));
           Serial.println(WiFi.localIP());
 #ifndef RFLINK_PORTAL_DISABLED
@@ -794,6 +837,9 @@ void eventHandler_WiFiStationGotIp(const WiFiEventStationModeGotIP& evt) {
 }
 WiFiEventHandler e3;
 void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected& evt) {
+  stationDisconnectCount++;
+  stationDisconnectAt = millis();
+  stationDisconnectReason = static_cast<uint32_t>(evt.reason);
   Serial.println(F("WiFi Client has been disconnected"));
   stationDisconnectedPending = true;
 }
@@ -802,6 +848,18 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
 
         bool clientNetworkIsUp() {
           return WiFi.isConnected();
+        }
+
+        void getConnectionDiagnostics(JsonObject &output) {
+          output[F("wifi_connected")] = WiFi.isConnected();
+          output[F("wifi_disconnects")] = stationDisconnectCount;
+          output[F("wifi_last_disconnect_ms")] = stationDisconnectAt;
+          output[F("wifi_last_disconnect_reason")] = stationDisconnectReason;
+          output[F("wifi_got_ip")] = stationGotIpCount;
+          output[F("wifi_associations_started")] = stationAssociationCount;
+#ifdef ESP8266
+          output[F("wifi_station_cycles")] = stationCycles;
+#endif
         }
 
         bool ntpIsSynchronized() {

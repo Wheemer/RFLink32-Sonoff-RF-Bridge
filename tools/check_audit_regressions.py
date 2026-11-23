@@ -23,7 +23,9 @@ assert "scanNetworks" not in retry
 assert "persistent(true)" not in wifi
 assert "WiFi.setAutoConnect(true)" not in wifi
 assert "WiFi.setAutoReconnect(true)" not in wifi
-assert retry.count("startClientAssociation();") == 1
+assert retry.index("RFLink::UpdateSecurity::isPending()") < retry.index("WiFi.enableSTA(false)")
+assert "WiFi.enableSTA(true)" in retry
+assert "WiFi.disconnect" not in retry
 ws = source("12_Portal_ws.cpp")
 assert "!jobExecuting" in ws
 assert ws.index("jobExecuting = true;", ws.index("void processWebSocketJobs")) < ws.index(
@@ -37,6 +39,14 @@ assert "measureJson(doc) >= sizeof(wsOutbound)" in ws
 config = source("11_Config.cpp")
 assert "bytes_written != expected_bytes" in config
 assert "Recovered configuration from interrupted save backup" in config
+ws = Path("RFLink/12_Portal_ws.cpp").read_text()
+raw_serialization = ws[ws.index("int commandPulseCount"):ws.index("void wsSendHello")]
+assert "yield();" not in raw_serialization, "Shared WebSocket output buffer can be overwritten at yield"
+assert "if(error || !doc.is<JsonObject>())" in config
+assert 'output["uptime"] = micros64() / 1000000ULL;' in Path("RFLink/RFLink.cpp").read_text()
+commit = config.index('LittleFS.rename(F("/tmp.json"), configFileName)')
+cleanup = config.index("LittleFS.remove(backupFileName)")
+assert commit < cleanup, "Preserve the recovery backup until replacement succeeds"
 assert "Filesystem mount failed; preserving existing flash data" in config
 assert "words[index] != 0xFFFFFFFFUL" in config
 ota = source("13_Update.cpp")

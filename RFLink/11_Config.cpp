@@ -216,19 +216,22 @@ namespace RFLink
 
       File file = LittleFS.open(configFileName, "r");
       DeserializationError error = deserializeJson(doc, file);
-      if (error)
-        Serial.println(F("Failed to read file, using default configuration"));
       file.close();
 
-      if(error && LittleFS.exists("/config.backup")) {
+      if(error || !doc.is<JsonObject>()) {
         doc.clear();
-        File backup = LittleFS.open("/config.backup", "r");
-        error = deserializeJson(doc, backup);
-        backup.close();
-        if(!error && doc.is<JsonObject>()) {
+        bool recovered = false;
+        if(LittleFS.exists("/config.backup")) {
+          File backup = LittleFS.open("/config.backup", "r");
+          error = deserializeJson(doc, backup);
+          backup.close();
+          recovered = !error && doc.is<JsonObject>();
+        }
+        if(recovered) {
           Serial.println(F("Recovered configuration from interrupted save backup"));
         } else {
           doc.clear();
+          Serial.println(F("Failed to read file, using default configuration"));
         }
       }
 
@@ -756,31 +759,16 @@ namespace RFLink
       }
 
       const char backupFileName[] = "/config.backup";
-      if(LittleFS.exists(backupFileName) && !LittleFS.remove(backupFileName)) {
-        Serial.println(F("failed to remove stale config backup!"));
-        if(restartScanner)
-          Signal::AsyncSignalScanner::startScanning();
-        return false;
-      }
-
-      const bool hadExistingConfig = LittleFS.exists(configFileName);
-      if(hadExistingConfig && !LittleFS.rename(configFileName, backupFileName)) {
-        Serial.println(F("failed to preserve current config!"));
-        if(restartScanner)
-          Signal::AsyncSignalScanner::startScanning();
-        return false;
-      }
-
+      // LittleFS atomically replaces the destination. Keep any recovery
+      // backup intact until the replacement has been installed.
       if(!LittleFS.rename(F("/tmp.json"), configFileName)) {
         Serial.println(F("failed to install new config!"));
-        if(hadExistingConfig && !LittleFS.rename(backupFileName, configFileName))
-          Serial.println(F("CRITICAL: failed to restore previous config!"));
         if(restartScanner)
           Signal::AsyncSignalScanner::startScanning();
         return false;
       }
 
-      if(hadExistingConfig && LittleFS.exists(backupFileName) && !LittleFS.remove(backupFileName))
+      if(LittleFS.exists(backupFileName) && !LittleFS.remove(backupFileName))
         Serial.println(F("warning: config backup cleanup failed"));
 
       Serial.println(F("OK"));

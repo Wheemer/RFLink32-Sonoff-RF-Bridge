@@ -40,9 +40,9 @@ namespace RFLink {
         bool ntpIsSynchronized();
 
         void getStatusJsonString(JsonObject &output);
+        void getConnectionDiagnostics(JsonObject &output);
     }
 
 }
 
 #endif //_10_WiFi_H
-

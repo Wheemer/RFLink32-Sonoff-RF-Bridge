@@ -153,9 +153,11 @@ namespace RFLink {
 
       RFLink::UpdateSecurity::setup();
 
+#ifndef ESP8266
       if (gettimeofday(&timeAtBoot, NULL) != 0) {
         Serial.println(F("Failed to obtain time"));
       }
+#endif
 
 #if (defined(ESP32) || defined(ESP8266))
       Serial.println(); // ESP "Garbage" message
@@ -632,21 +634,18 @@ namespace RFLink {
 
     void getStatusJsonString(JsonObject &output) {
 
+#ifdef ESP8266
+      // NTP can step wall time during the boot or after reconnecting.
+      output["uptime"] = micros64() / 1000000ULL;
+#else
       struct timeval now = {};
-
-      #ifdef ESP8266
-      // Little Patch to get the right boot time when connected to wifi ... Bug ?
-      if (timeAtBoot.tv_sec == 0) {
-        gettimeofday(&timeAtBoot, NULL);
-      }
-      #endif
-
       if (gettimeofday(&now, NULL) != 0) {
         RFLink::sendRawPrint(F("Failed to obtain time"));
         output["uptime"] = 0;
       } else {
         output["uptime"] = now.tv_sec - timeAtBoot.tv_sec;
       }
+#endif
 
       output["heap_free"] = ESP.getFreeHeap();
       #ifdef ESP32

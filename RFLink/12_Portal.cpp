@@ -42,6 +42,7 @@ namespace RFLink { namespace Portal {
         ApiWebServer apiServer(RFLINK_API_PORT);
         bool setupServerStarted = false;
         bool apiServerStarted = false;
+        uint32_t apiListenerStarts = 0;
         bool apiServerRestartPending = false;
         unsigned long apiServerRetryAt = 0;
         constexpr unsigned long API_SERVER_RETRY_MS = 2000;
@@ -374,6 +375,10 @@ namespace RFLink { namespace Portal {
           apiServerRetryAt = 0;
         }
 
+        uint32_t apiListenerStartCount() {
+          return apiListenerStarts;
+        }
+
         void maintainApiServer() {
           // A software restart can restore the station connection without
           // delivering a new Got-IP callback after Portal::start() has run.
@@ -419,6 +424,7 @@ namespace RFLink { namespace Portal {
           }
 
           apiServerStarted = true;
+          apiListenerStarts++;
           apiServerRestartPending = false;
           apiServerRetryAt = 0;
           Serial.println(F("OK"));

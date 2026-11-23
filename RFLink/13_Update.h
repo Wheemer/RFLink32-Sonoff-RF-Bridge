@@ -7,6 +7,7 @@ namespace RFLink::UpdateSecurity {
   void setupPersistentState();
   bool schedule(const char *url, const char *&error);
   void beginHandoff();
+  void cancelHandoff();
   void maintain();
   bool isPending();
   const char *lastError();
