@@ -7,7 +7,7 @@ from pathlib import Path
 
 source = Path("RFLink/10_Wifi.cpp").read_text()
 constants = "\n".join(
-    re.findall(r"^\s*(?:constexpr|const) [^;]+ STATION_(?:RECONNECT|RETRIES|OFF)[^;]+;", source, re.MULTILINE)
+    re.findall(r"^\s*(?:constexpr|const) [^;]+ STATION_[A-Z_]+[^;]*;", source, re.MULTILINE)
 )
 scheduler = source[source.index("        void clearStationReconnectSchedule()"):
                    source.index("        void configureClientWifi()")]
@@ -22,24 +22,29 @@ mock = r"""
 uint32_t now;
 unsigned long stationReconnectAt;
 uint8_t stationReconnectAttempts;
-bool stationCyclePending, ota;
+bool stationCyclePending, stationCycleUsed, stationStableTimerArmed, ota;
+bool stationAssociated, stationDhcpRetried;
+unsigned dhcpStops, dhcpStarts;
+void wifi_station_dhcpc_stop() { ++dhcpStops; }
+void wifi_station_dhcpc_start() { ++dhcpStarts; }
+uint32_t stationConnectedAt;
+#define WIFI_STA 1
 uint32_t stationCycles, joins, configs;
-namespace params { bool client_enabled = true; std::string client_ssid = "test"; }
+namespace params {
+bool client_enabled = true, client_dhcp_enabled = true;
+std::string client_ssid = "test";
+}
 namespace RFLink { namespace UpdateSecurity { bool isPending() { return ota; } } }
 struct {
   bool connected = false, station = true, ap = true, allowEnable = true;
   bool isConnected() { return connected; }
+  int getMode() { return (station ? WIFI_STA : 0) | (ap ? 2 : 0); }
   bool enableSTA(bool enable) {
     if (enable && !allowEnable) return false;
     station = enable;
     return true;
   }
 } WiFi;
-struct {
-  void println(const char *) {}
-  void printf_P(const char *, unsigned) {}
-} Serial;
-#define PSTR(x) x
 uint32_t millis() { return now; }
 void configureClientWifi() { assert(WiFi.station); ++configs; }
 void startClientAssociation() { assert(WiFi.station); ++joins; }
@@ -74,13 +79,52 @@ int main() {
   now = stationReconnectAt;
   maintainStationReconnect();
   assert(!stationCyclePending && WiFi.station && WiFi.ap && joins == 4 && configs == 1);
+  for (int i = 0; i != 12; ++i) {
+    now = stationReconnectAt;
+    maintainStationReconnect();
+    assert(stationCycles == 1 && WiFi.station);
+  }
+  assert(joins == 16);
   WiFi.connected = true;
   maintainStationReconnect();
   assert(!stationReconnectAt && !stationReconnectAttempts);
+  now += STATION_STABLE_MS - 1;
+  maintainStationReconnect();
+  assert(stationCycleUsed);
+  WiFi.connected = false;
+  maintainStationReconnect();
+  assert(stationCycleUsed && !stationStableTimerArmed);
+  WiFi.connected = true;
+  maintainStationReconnect();
+  now += STATION_STABLE_MS;
+  maintainStationReconnect();
+  assert(!stationCycleUsed);
   WiFi.connected = false;
   params::client_ssid.clear();
   maintainStationReconnect();
-  assert(!stationReconnectAt && joins == 4);
+  assert(!stationReconnectAt && joins == 16);
+  params::client_ssid = "test";
+  now = UINT32_MAX - 100;
+  maintainStationReconnect();
+  assert(static_cast<uint32_t>(stationReconnectAt) == 14899);
+  now = 14898;
+  maintainStationReconnect();
+  assert(joins == 16);
+  ++now;
+  maintainStationReconnect();
+  assert(joins == 17);
+  stationAssociated = true;
+  now = stationReconnectAt;
+  maintainStationReconnect();
+  assert(stationDhcpRetried && dhcpStops == 1 && dhcpStarts == 1 && joins == 17);
+  now = stationReconnectAt;
+  maintainStationReconnect();
+  assert(dhcpStops == 1 && dhcpStarts == 1 && joins == 18);
+  params::client_dhcp_enabled = false;
+  stationDhcpRetried = false;
+  now = stationReconnectAt;
+  maintainStationReconnect();
+  assert(dhcpStarts == 1 && joins == 19);
 }
 """
 with tempfile.TemporaryDirectory(prefix=".station-recovery-", dir=Path.cwd()) as directory:

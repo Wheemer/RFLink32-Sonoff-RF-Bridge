@@ -26,6 +26,10 @@ assert "WiFi.setAutoReconnect(true)" not in wifi
 assert retry.index("RFLink::UpdateSecurity::isPending()") < retry.index("WiFi.enableSTA(false)")
 assert "WiFi.enableSTA(true)" in retry
 assert "WiFi.disconnect" not in retry
+ap_persist = wifi.split("bool persistAccessPointDisabledAfterClientConnect()", 1)[1].split(
+    "void shutdownSetupAccessPointIfReady()", 1
+)[0]
+assert "if(!Config::saveConfigToFlash()) {\n              item->setBoolValue(true);" in ap_persist
 ws = source("12_Portal_ws.cpp")
 assert "!jobExecuting" in ws
 assert ws.index("jobExecuting = true;", ws.index("void processWebSocketJobs")) < ws.index(
