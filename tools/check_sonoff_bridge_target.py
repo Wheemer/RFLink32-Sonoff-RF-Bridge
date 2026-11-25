@@ -138,7 +138,7 @@ def main() -> None:
         "RFLink::Portal::prepareForUpdate();",
         "updatePhaseDetail(phaseDetail, sizeof(phaseDetail), \"OTA HTTP updater starting\");",
         "persistState(UpdateResult::Failed, errorCode, updateLastError);",
-        "if(!persistState(UpdateResult::Staged, 0, \"Firmware staged; restarting\"))",
+        "if(!persistState(UpdateResult::Staged, 0, phaseDetail))",
         "updater.closeConnectionsOnUpdate(true);",
     ):
         require(update, setting)
