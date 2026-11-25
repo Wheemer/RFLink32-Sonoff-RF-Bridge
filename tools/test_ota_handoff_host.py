@@ -22,11 +22,16 @@ constexpr unsigned long UPDATE_START_DELAY_MS = 1200;
 char pendingUpdateUrl[128], updateLastError[128];
 int writes, failWrite, fetches, reboots, sources;
 enum class UpdateResult { Fetching, Failed, Staged };
-bool persistState(UpdateResult, int32_t, const char *) { return ++writes != failWrite; }
+bool persistState(UpdateResult result, int32_t, const char *detail) {
+  if (result == UpdateResult::Staged)
+    assert(std::strstr(detail, "updater_ms=4321") != nullptr);
+  return ++writes != failWrite;
+}
 void updatePhaseDetail(char *, size_t, const char *) {}
 bool fetchAndApplyUpdate(const char *url, char *, size_t, int32_t &) {
   assert(prepared && stopped && std::strcmp(url, "http://example.test/fw") == 0);
   ++fetches;
+  now += 4321;
   return fetchOk;
 }
 unsigned long millis() { return now; }

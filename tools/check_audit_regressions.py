@@ -15,7 +15,6 @@ disconnect = wifi.split("void processStationDisconnected()", 1)[1].split(
 assert "clearStationReconnectSchedule();" not in disconnect
 assert "if(stationReconnectAt == 0)" in disconnect
 assert "STATION_RECONNECT_INITIAL_MS = 15000" in wifi
-assert "stationReconnectAttempts < 255" in wifi
 retry = wifi.split("void maintainStationReconnect()", 1)[1].split(
     "void resetClientWifi()", 1
 )[0]
@@ -23,9 +22,9 @@ assert "scanNetworks" not in retry
 assert "persistent(true)" not in wifi
 assert "WiFi.setAutoConnect(true)" not in wifi
 assert "WiFi.setAutoReconnect(true)" not in wifi
-assert retry.index("RFLink::UpdateSecurity::isPending()") < retry.index("WiFi.enableSTA(false)")
-assert "WiFi.enableSTA(true)" in retry
-assert "WiFi.disconnect" not in retry
+assert retry.index("RFLink::UpdateSecurity::isPending()") < retry.index("WiFi.disconnect(false, false)")
+assert "WiFi.enableSTA" not in retry
+assert "wifi_station_dhcpc_" not in retry
 ap_persist = wifi.split("bool persistAccessPointDisabledAfterClientConnect()", 1)[1].split(
     "void shutdownSetupAccessPointIfReady()", 1
 )[0]

@@ -263,6 +263,7 @@ namespace RFLink::UpdateSecurity {
       return;
     }
     int32_t errorCode = -1;
+    const uint32_t updaterStartedAt = millis();
     if(!fetchAndApplyUpdate(pendingUpdateUrl, updateLastError, sizeof(updateLastError), errorCode)) {
       persistState(UpdateResult::Failed, errorCode, updateLastError);
       Serial.print(F("Signed update failed: "));
@@ -271,7 +272,9 @@ namespace RFLink::UpdateSecurity {
         RFLink::Signal::AsyncSignalScanner::startScanning();
       return;
     }
-    if(!persistState(UpdateResult::Staged, 0, "Firmware staged; restarting")) {
+    snprintf(phaseDetail, sizeof(phaseDetail), "Firmware staged; updater_ms=%lu; restarting",
+             static_cast<unsigned long>(static_cast<uint32_t>(millis() - updaterStartedAt)));
+    if(!persistState(UpdateResult::Staged, 0, phaseDetail)) {
       snprintf(updateLastError, sizeof(updateLastError), "Could not persist OTA staged state");
       Serial.println(updateLastError);
     }
