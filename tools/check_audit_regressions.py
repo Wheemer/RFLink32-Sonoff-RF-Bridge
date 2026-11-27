@@ -24,7 +24,8 @@ assert "WiFi.setAutoConnect(true)" not in wifi
 assert "WiFi.setAutoReconnect(true)" not in wifi
 assert retry.index("RFLink::UpdateSecurity::isPending()") < retry.index("WiFi.disconnect(false, false)")
 assert "WiFi.enableSTA" not in retry
-assert "wifi_station_dhcpc_" not in retry
+assert retry.index("stationAssociated && params::client_dhcp_enabled") < retry.index("wifi_station_dhcpc_stop()")
+assert retry.index("stationDhcpRetriedFor != association") < retry.index("wifi_station_dhcpc_start()")
 ap_persist = wifi.split("bool persistAccessPointDisabledAfterClientConnect()", 1)[1].split(
     "void shutdownSetupAccessPointIfReady()", 1
 )[0]

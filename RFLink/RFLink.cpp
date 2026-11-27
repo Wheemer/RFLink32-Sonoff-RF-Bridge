@@ -169,22 +169,10 @@ namespace RFLink {
       }
 #endif
 
-#if (defined(ESP32) || defined(ESP8266))
-      Serial.println(); // ESP "Garbage" message
-      Serial.print(F("Arduino IDE Version :\t"));
-      Serial.println(ARDUINO);
-#endif
 #ifdef ESP32
       Serial.print(F("ESP SDK version:\t"));
       Serial.println(ESP.getSdkVersion());
 #endif
-#ifdef ESP8266
-      Serial.print(F("ESP CoreVersion :\t"));
-      Serial.println(ESP.getCoreVersion());
-#endif // ESP8266
-      Serial.print(F("Sketch File :\t\t"));
-      Serial.println(F(__FILE__)); // "RFLink.ino" version is in 20;00 Message
-
       display_Header();
       display_Splash();
       display_Footer();

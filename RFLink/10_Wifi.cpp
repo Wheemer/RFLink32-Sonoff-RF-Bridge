@@ -80,8 +80,20 @@ namespace RFLink { namespace Wifi {
         const unsigned long STATION_RECONNECT_MAX_MS = 30000;
 #ifdef ESP8266
         uint32_t stationAssociationStartedAt = 0;
+        volatile bool stationAssociated = false;
+        volatile uint32_t stationAssociatedAt = 0;
+        volatile uint32_t stationAssociatedCount = 0;
+        volatile bool stationLocalDisconnectPending = false;
+        volatile uint32_t stationLocalDisconnectAt = 0;
+        volatile uint32_t stationFailureReason = 0;
+        volatile uint32_t stationFailureAt = 0;
+        volatile uint32_t stationLocalLeaveCount = 0;
+        uint32_t stationDhcpRetriedFor = 0;
+        uint32_t stationDhcpRestartCount = 0;
+        bool stationRetryAfterDisconnect = false;
         const unsigned long STATION_RECONNECT_PENDING_MS = 5000;
         const unsigned long STATION_RECONNECT_DEADLINE_MS = 60000;
+        const unsigned long STATION_RECONNECT_DHCP_GRACE_MS = 15000;
 #endif
         const unsigned long SETUP_AP_SHUTDOWN_GRACE_MS = 1000;
         struct CachedWifiNetwork {
@@ -203,7 +215,6 @@ namespace RFLink { namespace Wifi {
           // Applying changes will happen in mainLoop()
           if(triggerChanges && changesDetected) {
             clientParamsHaveChanged = true;
-            Serial.println(F("Client Wifi settings haver changed and will be applied at next loop"));
           }
         }
 
@@ -251,7 +262,6 @@ namespace RFLink { namespace Wifi {
           // Applying changes will happen in mainLoop()
           if(triggerChanges && changesDetected) {
             accessPointParamsHaveChanged = true;
-            Serial.println(F("AP Wifi settings haver changed and will be applied at next loop"));
           }
 
         }
@@ -292,7 +302,6 @@ namespace RFLink { namespace Wifi {
           if(captiveDnsServer.start(53, "*", WiFi.softAPIP())) {
             captiveDnsStarted = true;
             captiveDnsLastRetry = 0;
-            Serial.printf_P(PSTR("Captive portal DNS started on %s\r\n"), WiFi.softAPIP().toString().c_str());
           } else {
             captiveDnsLastRetry = millis();
             Serial.println(F("Captive portal DNS start FAILED"));
@@ -336,7 +345,6 @@ namespace RFLink { namespace Wifi {
 
         void refreshWifiScanCache() {
           clearWifiScanCache();
-          Serial.println(F("Scanning WiFi networks before setup AP service"));
           WiFiMode_t previousMode = WiFi.getMode();
           if((previousMode & WIFI_STA) == 0) {
             WiFi.mode(WIFI_STA);
@@ -392,7 +400,6 @@ namespace RFLink { namespace Wifi {
           }
           WiFi.scanDelete();
           WiFi.mode(previousMode);
-          Serial.printf_P(PSTR("Cached %i unique WiFi networks\r\n"), cachedWifiNetworkCount);
         }
 
         int getCachedWifiNetworkCount() {
@@ -490,6 +497,9 @@ namespace RFLink { namespace Wifi {
 
         void clearStationReconnectSchedule() {
           stationReconnectAt = 0;
+#ifdef ESP8266
+          stationRetryAfterDisconnect = false;
+#endif
         }
 
         void scheduleStationReconnect(unsigned long delayMs = STATION_RECONNECT_INITIAL_MS) {
@@ -549,14 +559,51 @@ namespace RFLink { namespace Wifi {
           if(static_cast<int32_t>(millis() - stationReconnectAt) < 0)
             return;
 #ifdef ESP8266
+          const uint32_t now = millis();
+          const auto sdkStatus = wifi_station_get_connect_status();
+          if(stationRetryAfterDisconnect) {
+            stationRetryAfterDisconnect = false;
+            stationLocalDisconnectPending = false;
+            if(!stationAssociated) {
+              startClientAssociation();
+              scheduleStationReconnect(STATION_RECONNECT_MAX_MS);
+              return;
+            }
+          }
+          if(stationAssociated && params::client_dhcp_enabled) {
+            const uint32_t association = stationAssociatedCount;
+            const uint32_t age = now - stationAssociatedAt;
+            if(age < STATION_RECONNECT_DHCP_GRACE_MS) {
+              scheduleStationReconnect(STATION_RECONNECT_PENDING_MS);
+              return;
+            }
+            if(stationDhcpRetriedFor != association) {
+              stationDhcpRetriedFor = association;
+              stationDhcpRestartCount++;
+              wifi_station_dhcpc_stop();
+              wifi_station_dhcpc_start();
+              scheduleStationReconnect(STATION_RECONNECT_MAX_MS);
+              return;
+            }
+          }
           // WL_CONNECTED requires an IP; do not interrupt an in-flight SDK join.
-          if(wifi_station_get_connect_status() == STATION_CONNECTING &&
-             uint32_t(millis() - stationAssociationStartedAt) < STATION_RECONNECT_DEADLINE_MS) {
+          if(!stationAssociated && sdkStatus == STATION_CONNECTING &&
+             now - stationAssociationStartedAt < STATION_RECONNECT_DEADLINE_MS) {
             scheduleStationReconnect(STATION_RECONNECT_PENDING_MS);
             return;
           }
-          // End the stale attempt without switching modes or erasing credentials.
-          WiFi.disconnect(false, false);
+          // Terminal SDK failures do not need another disconnect.
+          if(stationAssociated || sdkStatus == STATION_CONNECTING) {
+            stationLocalDisconnectAt = now;
+            stationLocalDisconnectPending = true;
+            stationAssociated = false;
+            stationRetryAfterDisconnect = true;
+            if(!WiFi.disconnect(false, false))
+              stationLocalDisconnectPending = false;
+            // Let the SDK process the disconnect before issuing another join.
+            scheduleStationReconnect(STATION_RECONNECT_PENDING_MS);
+            return;
+          }
 #endif
           startClientAssociation();
           scheduleStationReconnect(STATION_RECONNECT_MAX_MS);
@@ -598,11 +645,9 @@ namespace RFLink { namespace Wifi {
             #else
             WiFi.hostname(params::client_hostname);
             #endif
-            Serial.printf_P(PSTR("* WIFI AP starting with SSID '%s' and band=%i... "), params::AP_ssid.c_str(), cpWifiChannel);
             if( !startAccessPoint())
               Serial.println(F("FAILED"));
             else {
-              Serial.println(F("OK"));
 #ifndef RFLINK_PORTAL_DISABLED
               RFLink::Portal::startSetupServer();
 #endif
@@ -801,15 +846,31 @@ namespace RFLink { namespace Wifi {
 #endif //ESP32
 
 #ifdef ESP8266
+WiFiEventHandler e1;
+void eventHandler_WiFiStationConnected(const WiFiEventStationModeConnected&) {
+  stationLocalDisconnectPending = false;
+  stationAssociatedAt = millis();
+  stationAssociatedCount++;
+  stationAssociated = true;
+}
 WiFiEventHandler e2;
-void eventHandler_WiFiStationGotIp(const WiFiEventStationModeGotIP& evt) {
+void eventHandler_WiFiStationGotIp(const WiFiEventStationModeGotIP&) {
   stationGotIpPending = true;
 }
 WiFiEventHandler e3;
 void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected& evt) {
+  stationAssociated = false;
   stationDisconnectCount++;
   stationDisconnectAt = millis();
   stationDisconnectReason = static_cast<uint32_t>(evt.reason);
+  if(stationLocalDisconnectPending && evt.reason == REASON_ASSOC_LEAVE &&
+     stationDisconnectAt - stationLocalDisconnectAt < STATION_RECONNECT_PENDING_MS) {
+    stationLocalLeaveCount++;
+  } else {
+    stationFailureReason = stationDisconnectReason;
+    stationFailureAt = stationDisconnectAt;
+  }
+  stationLocalDisconnectPending = false;
   stationDisconnectedPending = true;
 }
 #endif
@@ -826,6 +887,14 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
           output[F("wifi_last_disconnect_reason")] = stationDisconnectReason;
           output[F("wifi_got_ip")] = stationGotIpCount;
           output[F("wifi_associations_started")] = stationAssociationCount;
+#ifdef ESP8266
+          output[F("wifi_associated")] = stationAssociated;
+          output[F("wifi_associations_completed")] = stationAssociatedCount;
+          output[F("wifi_dhcp_restarts")] = stationDhcpRestartCount;
+          output[F("wifi_last_failure_reason")] = stationFailureReason;
+          output[F("wifi_last_failure_ms")] = stationFailureAt;
+          output[F("wifi_local_leaves")] = stationLocalLeaveCount;
+#endif
         }
 
         bool ntpIsSynchronized() {
@@ -854,6 +923,7 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
           WiFi.onEvent(eventHandler_WiFiStationGotIp, ARDUINO_EVENT_WIFI_STA_GOT_IP );
           WiFi.onEvent(eventHandler_WiFiStationLostIp, ARDUINO_EVENT_WIFI_STA_LOST_IP );
 #else
+          e1 = WiFi.onStationModeConnected(&eventHandler_WiFiStationConnected);
           e2 = WiFi.onStationModeGotIP(&eventHandler_WiFiStationGotIp);
           e3 = WiFi.onStationModeDisconnected(&eventHandler_WiFiStationDisconnected);
 #endif
