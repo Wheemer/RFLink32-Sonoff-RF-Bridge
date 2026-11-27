@@ -83,6 +83,8 @@ namespace RFLink {
 
     bool executeCliCommand(char *cmd);
     void sendMsgFromBuffer();
+    void markRawTxPhase(bool active);
+    const char *rawTxPhaseAtBoot();
     void sendRawPrint(const char *buf, bool end_of_line=false);
     void sendRawPrint(const __FlashStringHelper *buf, bool end_of_line=false) ;
     void sendRawPrint(long n);

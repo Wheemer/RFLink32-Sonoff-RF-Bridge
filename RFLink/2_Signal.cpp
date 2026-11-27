@@ -1304,7 +1304,9 @@ namespace RFLink
         Serial.printf_P(PSTR("RF TX pulses=%i repeats=%i "), txSignal.Number, txSignal.Repeats);
         yield();
         ESP.wdtFeed();
+        RFLink::markRawTxPhase(true);
         RawSendRF(&txSignal);
+        RFLink::markRawTxPhase(false);
         Serial.println(F("done"));
         return true;
       }

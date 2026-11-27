@@ -457,6 +457,7 @@ namespace RFLink { namespace Portal {
               status[F("ws_connects")] = wsConnectCount;
               status[F("ws_disconnects")] = wsDisconnectCount;
               status[F("ws_errors")] = wsErrorCount;
+              status[F("raw_tx_phase_at_boot")] = RFLink::rawTxPhaseAtBoot();
               RFLink::Wifi::getConnectionDiagnostics(status);
               wsSendJsonToClient(client, reply);
               return;

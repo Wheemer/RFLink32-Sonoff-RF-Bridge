@@ -70,6 +70,11 @@ namespace RFLink {
       // blocks (496-503) for this 8-byte diagnostic breadcrumb.
       constexpr uint32_t REBOOT_BREADCRUMB_MAGIC = 0x52464252UL;
       constexpr uint32_t REBOOT_BREADCRUMB_RTC_BLOCK = 124;
+      // Separate from the requested-reboot marker and the OTA reserved blocks.
+      constexpr uint32_t RAW_TX_RTC_BLOCK = 123;
+      constexpr uint32_t RAW_TX_ACTIVE = 0x52465401UL;
+      constexpr uint32_t RAW_TX_COMPLETE = 0x52465402UL;
+      uint32_t bootRawTxPhase = 0;
 
       struct alignas(4) RebootBreadcrumb {
         uint32_t magic;
@@ -81,6 +86,11 @@ namespace RFLink {
       RebootSource rebootSourceAtBoot = RebootSource::Unknown;
 
       void loadRebootSourceAtBoot() {
+        if(!ESP.rtcUserMemoryRead(RAW_TX_RTC_BLOCK, &bootRawTxPhase, sizeof(bootRawTxPhase)))
+          bootRawTxPhase = 0;
+        uint32_t empty = 0;
+        ESP.rtcUserMemoryWrite(RAW_TX_RTC_BLOCK, &empty, sizeof(empty));
+
         RebootBreadcrumb breadcrumb = {0, 0};
         if (ESP.rtcUserMemoryRead(
               REBOOT_BREADCRUMB_RTC_BLOCK,
@@ -558,6 +568,25 @@ namespace RFLink {
       sendMsgFromBuffer(); // in case there is a response waiting to be sent
       resetSerialBuffer();
       return commandAccepted;
+    }
+
+    void markRawTxPhase(bool active) {
+#if defined(ESP8266)
+      uint32_t phase = active ? RAW_TX_ACTIVE : RAW_TX_COMPLETE;
+      ESP.rtcUserMemoryWrite(RAW_TX_RTC_BLOCK, &phase, sizeof(phase));
+#else
+      (void)active;
+#endif
+    }
+
+    const char *rawTxPhaseAtBoot() {
+#if defined(ESP8266)
+      if(bootRawTxPhase == RAW_TX_ACTIVE)
+        return "transmit";
+      if(bootRawTxPhase == RAW_TX_COMPLETE)
+        return "completed";
+#endif
+      return "unknown";
     }
 
     void markRebootSource(RebootSource source) {
