@@ -9,6 +9,7 @@
 #include "10_Wifi.h"
 #include "12_Portal.h"
 #include "13_Update.h"
+#include "CommandReceipts.h"
 
 namespace RFLink { namespace Portal {
 
@@ -27,6 +28,7 @@ namespace RFLink { namespace Portal {
             WsJobType type = WsJobType::None;
             uint32_t clientId = 0;
             uint32_t requestId = 0;
+            char receipt[CommandReceipts::tokenLength + 1] = {};
             char command[INPUT_COMMAND_SIZE] = {0};
             unsigned int learnSeconds = 30;
             bool ok = false;
@@ -34,6 +36,7 @@ namespace RFLink { namespace Portal {
           };
 
           WsJob activeJob;
+          CommandReceipts commandReceipts;
           // The AsyncWebServer callback produces jobs while RFLink's main
           // loop consumes them. The flag is the publish point: populate
           // activeJob first, then set it so the main loop cannot cache an
@@ -268,6 +271,7 @@ namespace RFLink { namespace Portal {
             wsStatusDoc.clear();
             JsonObject root = wsStatusDoc.to<JsonObject>();
             root[F("type")] = F("hello");
+            root[F("command_receipts")] = true;
             root[F("cursor")] = RFLink::getRfEventCursor();
             JsonObject status = root.createNestedObject(F("status"));
             RFLink::getStatusJsonString(status);
@@ -275,6 +279,7 @@ namespace RFLink { namespace Portal {
               wsStatusDoc.clear();
               root = wsStatusDoc.to<JsonObject>();
               root[F("type")] = F("hello");
+              root[F("command_receipts")] = true;
               root[F("cursor")] = RFLink::getRfEventCursor();
               status = root.createNestedObject(F("status"));
               status[F("status_truncated")] = true;
@@ -304,6 +309,7 @@ namespace RFLink { namespace Portal {
             JsonObject root = wsStatusDoc.to<JsonObject>();
 
             if(activeJob.type == WsJobType::Command) {
+              commandReceipts.remember(activeJob.receipt, activeJob.ok, activeJob.elapsedMs);
               root[F("type")] = F("command_result");
               root[F("id")] = activeJob.requestId;
               root[F("ok")] = activeJob.ok;
@@ -392,7 +398,29 @@ namespace RFLink { namespace Portal {
               return;
             }
 
-            uint32_t requestId = root[F("id")] | 0;
+            uint32_t requestId = root[F("id")] | uint32_t(0);
+
+            if(strcmp(type, "command_status") == 0 || strcmp(type, "command") == 0) {
+              const char *token = root[F("receipt")];
+              if(root.containsKey(F("receipt")) && !CommandReceipts::valid(token)) {
+                wsSendError(client, requestId, F("Invalid command receipt"));
+                return;
+              }
+              const auto *entry = commandReceipts.find(token);
+              if(entry != nullptr) {
+                StaticJsonDocument<128> reply;
+                reply[F("type")] = F("command_result");
+                reply[F("id")] = requestId;
+                reply[F("ok")] = entry->ok;
+                reply[F("elapsed_ms")] = entry->elapsedMs;
+                wsSendJsonToClient(client, reply);
+                return;
+              }
+              if(strcmp(type, "command_status") == 0) {
+                wsSendError(client, requestId, F("Command outcome unknown"));
+                return;
+              }
+            }
 
             if(strcmp(type, "learn_ack") == 0) {
               if((root[F("sequence")] | 0UL) == pendingLearnSequence) {
@@ -491,6 +519,10 @@ namespace RFLink { namespace Portal {
                   return;
                 }
               }
+              const char *token = root[F("receipt")];
+              activeJob.receipt[0] = 0;
+              if(token != nullptr)
+                memcpy(activeJob.receipt, token, sizeof(activeJob.receipt));
               memmove(activeJob.command, command, commandLength + 1);
               activeJob.clientId = client->id();
               activeJob.requestId = requestId;

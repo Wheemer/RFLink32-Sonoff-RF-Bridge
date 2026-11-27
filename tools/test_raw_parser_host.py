@@ -16,7 +16,7 @@ prefix = """
 #include <climits>
 #include <cassert>
 #define RAW_BUFFER_SIZE 512
-struct RawSignalStruct { uint16_t Pulses[513]; };
+struct RawSignalStruct { uint16_t Pulses[513]; int Number; uint8_t Multiply; };
 """
 tests = r'''
 int main() {
@@ -33,6 +33,24 @@ int main() {
   assert(!scanJsonPulses("{\"pulses\":[16711426,200]}", s, false, 1, count, longest));
   assert(!scanJsonPulses("{\"pulses\":[-1,200]}", s, false, 1, count, longest));
   int value = 0;
+  assert(scanJsonPulses("{\"nested\":{\"pulses\":[300,400]},\"pulses\":[100,200]}",
+                        s, true, 1, count, longest));
+  assert(count == 2 && s.Pulses[1] == 100 && s.Pulses[2] == 200);
+  assert(!scanJsonPulses("{\"nested\":{\"pulses\":[300,400]}}", s, false, 1, count, longest));
+  assert(!scanJsonPulses("{\"pulses\":[100,200],\"pulses\":[300,400]}", s, false, 1, count, longest));
+  assert(parseJsonSignedField("{\"nested\":{\"repeat\":99},\"repeat\":5}",
+                              "\"repeat\"", value) && value == 5);
+  uint64_t frameUs = 0;
+  s.Multiply = 1;
+  s.Number = 8;
+  for (int i = 1; i <= 8; ++i) s.Pulses[i] = 5000;
+  assert(measureRawFrame(s, frameUs) && frameUs == 40000);
+  s.Number = 10;
+  s.Pulses[9] = 5000;
+  s.Pulses[10] = 5001;
+  assert(!measureRawFrame(s, frameUs));
+  s.Pulses[9] = 5001;
+  assert(measureRawFrame(s, frameUs) && frameUs == 50002);
   assert(parseJsonSignedField("{\"repeat\":5}", "\"repeat\"", value) && value == 5);
   assert(!parseJsonSignedField("{\"repeat\":999999999999999999999}", "\"repeat\"", value));
   assert(!parseJsonSignedField("{\"repeat\":2x}", "\"repeat\"", value));

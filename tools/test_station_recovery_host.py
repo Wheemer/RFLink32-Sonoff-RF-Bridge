@@ -14,6 +14,10 @@ mock = r"""
 #include <string>
 #define ESP8266
 uint32_t now, stationReconnectAt;
+uint32_t stationAssociationStartedAt;
+enum { STATION_IDLE, STATION_CONNECTING, STATION_CONNECT_FAIL };
+int stationStatus = STATION_IDLE;
+int wifi_station_get_connect_status() { return stationStatus; }
 int disconnects, joins;
 bool ota;
 namespace params { bool client_enabled = true; std::string client_ssid = "test"; }
@@ -27,7 +31,11 @@ struct {
   }
 } WiFi;
 uint32_t millis() { return now; }
-void startClientAssociation() { assert(disconnects == joins + 1); ++joins; }
+void startClientAssociation() {
+  assert(disconnects == joins + 1);
+  stationAssociationStartedAt = now;
+  ++joins;
+}
 """
 tests = r"""
 int main() {
@@ -60,6 +68,34 @@ int main() {
   params::client_ssid.clear();
   maintainStationReconnect();
   assert(!stationReconnectAt && joins == 20);
+
+  params::client_ssid = "test";
+  stationStatus = STATION_CONNECTING;
+  now = UINT32_MAX - 100;
+  stationAssociationStartedAt = now;
+  maintainStationReconnect();
+  for (uint32_t elapsed = 15000; elapsed < 60000; elapsed += 5000) {
+    now = stationAssociationStartedAt + elapsed;
+    maintainStationReconnect();
+    assert(joins == 20 && stationReconnectAt - now == 5000);
+  }
+  now = stationAssociationStartedAt + 60000;
+  maintainStationReconnect();
+  assert(joins == 21 && disconnects == 21);
+
+  // A terminal failure need not wait for the pending-join deadline.
+  stationStatus = STATION_CONNECT_FAIL;
+  now = stationReconnectAt;
+  maintainStationReconnect();
+  assert(joins == 22 && disconnects == 22);
+
+  stationStatus = STATION_CONNECTING;
+  now = stationReconnectAt;
+  maintainStationReconnect();
+  assert(joins == 22);
+  WiFi.connected = true;
+  maintainStationReconnect();
+  assert(!stationReconnectAt && disconnects == 22);
 }
 """
 with tempfile.TemporaryDirectory(prefix=".station-recovery-", dir=Path.cwd()) as directory:

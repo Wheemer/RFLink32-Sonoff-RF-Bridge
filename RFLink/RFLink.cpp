@@ -216,9 +216,9 @@ namespace RFLink {
 
       Radio::set_Radio_mode(Radio::Radio_OFF);
 
-#if defined(ESP8266) || defined(ESP32)
+#if (defined(ESP8266) || defined(ESP32)) && !defined(RFLINK_USE_HARDCODED_RADIO_PINS_ONLY)
       Radio::show_Radio_Pin();
-#endif // ESP8266 || ESP32
+#endif
 
 #ifdef OLED_ENABLED
       setup_OLED();

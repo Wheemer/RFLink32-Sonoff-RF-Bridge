@@ -1088,15 +1088,44 @@ namespace RFLink
       return p;
     }
 
+    const char *findRawJsonField(const char *json, const char *field)
+    {
+      // The caller validates the JSON. Walk quoted tokens without treating
+      // escaped strings or nested objects as command fields.
+      unsigned depth = 0;
+      const size_t length = strlen(field);
+      const char *value = nullptr;
+      for(const char *p = json; *p; ++p) {
+        if(*p == '{' || *p == '[') {
+          ++depth;
+        } else if(*p == '}' || *p == ']') {
+          --depth;
+        } else if(*p == '"') {
+          const char *start = p++;
+          while(*p && *p != '"') {
+            if(*p == '\\' && p[1])
+              ++p;
+            ++p;
+          }
+          if(!*p)
+            return nullptr;
+          const char *colon = skipJsonWhitespace(p + 1);
+          if(depth == 1 && *colon == ':' && size_t(p - start + 1) == length &&
+             memcmp(start, field, length) == 0) {
+            if(value != nullptr)
+              return nullptr;
+            value = skipJsonWhitespace(colon + 1);
+          }
+        }
+      }
+      return value;
+    }
+
     bool parseJsonSignedField(const char *json_str, const char *field, signed int &value)
     {
-      const char *p = strstr(json_str, field);
+      const char *p = findRawJsonField(json_str, field);
       if(p == nullptr)
         return false;
-      p = strchr(p, ':');
-      if(p == nullptr)
-        return false;
-      p = skipJsonWhitespace(p + 1);
       char *endPtr = nullptr;
       errno = 0;
       long parsed = strtol(p, &endPtr, 10);
@@ -1111,11 +1140,8 @@ namespace RFLink
 
     bool scanJsonPulses(const char *json_str, RawSignalStruct &signal, bool fill, unsigned long multiply, int &count, unsigned long &longest_us)
     {
-      const char *p = strstr(json_str, "\"pulses\"");
-      if(p == nullptr)
-        return false;
-      p = strchr(p, '[');
-      if(p == nullptr)
+      const char *p = findRawJsonField(json_str, "\"pulses\"");
+      if(p == nullptr || *p != '[')
         return false;
       p++;
 
@@ -1158,6 +1184,22 @@ namespace RFLink
           return true;
         return false;
       }
+    }
+
+    bool measureRawFrame(const RawSignalStruct &signal, uint64_t &frameUs)
+    {
+      // Match delayLongPulse's IRQ behavior without modifying any RF edges.
+      constexpr uint32_t maxMaskedUs = 40000;
+      uint32_t maskedUs = 0;
+      frameUs = 0;
+      for(int i = 1; i <= signal.Number; ++i) {
+        const uint32_t pulseUs = uint32_t(signal.Pulses[i]) * signal.Multiply;
+        frameUs += pulseUs;
+        maskedUs = pulseUs > 5000 ? 0 : maskedUs + pulseUs;
+        if(maskedUs > maxMaskedUs)
+          return false;
+      }
+      return true;
     }
 
     bool getSignalFromJson(RawSignalStruct &signal, const char *json_str)
@@ -1227,9 +1269,9 @@ namespace RFLink
 
       signed int repeat = 0;
       signed int delay = 0;
-      if(strstr(json_str, "\"repeat\"") != nullptr && !parseJsonSignedField(json_str, "\"repeat\"", repeat))
+      if(metadata.containsKey("repeat") && !parseJsonSignedField(json_str, "\"repeat\"", repeat))
         return failTxParse("invalid repeat");
-      if(strstr(json_str, "\"delay\"") != nullptr && !parseJsonSignedField(json_str, "\"delay\"", delay))
+      if(metadata.containsKey("delay") && !parseJsonSignedField(json_str, "\"delay\"", delay))
         return failTxParse("invalid delay");
 
       if(repeat < 0 || repeat > 100) {
@@ -1244,8 +1286,8 @@ namespace RFLink
       signal.Delay = delay;
 
       uint64_t estimated_us = 0;
-      for(int i = 1; i <= signal.Number; i++)
-        estimated_us += (uint64_t)signal.Pulses[i] * signal.Multiply;
+      if(!measureRawFrame(signal, estimated_us))
+        return failTxParse("raw frame exceeds interrupt budget");
       uint64_t estimated_ms = (estimated_us / 1000ULL) * ((uint64_t)signal.Repeats + 1ULL) +
         ((uint64_t)signal.Delay * (uint64_t)signal.Repeats);
 

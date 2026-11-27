@@ -32,6 +32,7 @@ jobs:
           python tools/test_raw_parser_host.py
           python tools/test_json_builder_host.py
           python tools/test_raw_edges_host.py
+          python tools/test_command_receipts_host.py
           g++ -Wall -Wextra -Werror RFLink/WifiMgmtFrame.cpp tools/test_wifi_mgmt_frame.cpp -o /tmp/test_wifi_mgmt_frame
           /tmp/test_wifi_mgmt_frame
           python tools/test_learn_low_memory_host.py

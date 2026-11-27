@@ -103,6 +103,7 @@ with tempfile.TemporaryDirectory(prefix="rfbridge-stock-edges-") as directory:
             extra += f"assert(scanJsonPulses({payload}, s, true, 1, count, longest));\n"
             extra += "assert(count == s.Number);\n"
             extra += "for(int i = 1; i <= count; ++i) assert(s.Pulses[i] == saved.Pulses[i]);\n"
+            extra += "uint64_t frameUs = 0; assert(measureRawFrame(s, frameUs));\n"
             extra += "compare(s);\n}\n"
         tests = tests.rsplit("}}", 1)[0] + extra + "}}"
     code = (prefix + parser + emitter + "\n#define RawSendRF StockRawSendRF\n"

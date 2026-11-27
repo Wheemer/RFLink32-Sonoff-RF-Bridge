@@ -22,6 +22,9 @@ extern "C" {
   #include <ESP8266mDNS.h>
   #include <ESP8266TrueRandom.h>
   #include <LwipDhcpServer-NonOS.h>
+  extern "C" {
+    #include <user_interface.h>
+  }
 #endif // ESP32
 
 
@@ -75,6 +78,11 @@ namespace RFLink { namespace Wifi {
         unsigned long stationReconnectAt = 0;
         const unsigned long STATION_RECONNECT_INITIAL_MS = 15000;
         const unsigned long STATION_RECONNECT_MAX_MS = 30000;
+#ifdef ESP8266
+        uint32_t stationAssociationStartedAt = 0;
+        const unsigned long STATION_RECONNECT_PENDING_MS = 5000;
+        const unsigned long STATION_RECONNECT_DEADLINE_MS = 60000;
+#endif
         const unsigned long SETUP_AP_SHUTDOWN_GRACE_MS = 1000;
         struct CachedWifiNetwork {
           String ssid;
@@ -521,6 +529,9 @@ namespace RFLink { namespace Wifi {
           if((mode & WIFI_STA) == 0)
             WiFi.mode((mode & WIFI_AP) != 0 ? WIFI_AP_STA : WIFI_STA);
           stationAssociationCount++;
+#ifdef ESP8266
+          stationAssociationStartedAt = millis();
+#endif
           WiFi.begin(params::client_ssid.c_str(), params::client_password.c_str());
         }
 
@@ -538,6 +549,12 @@ namespace RFLink { namespace Wifi {
           if(static_cast<int32_t>(millis() - stationReconnectAt) < 0)
             return;
 #ifdef ESP8266
+          // WL_CONNECTED requires an IP; do not interrupt an in-flight SDK join.
+          if(wifi_station_get_connect_status() == STATION_CONNECTING &&
+             uint32_t(millis() - stationAssociationStartedAt) < STATION_RECONNECT_DEADLINE_MS) {
+            scheduleStationReconnect(STATION_RECONNECT_PENDING_MS);
+            return;
+          }
           // End the stale attempt without switching modes or erasing credentials.
           WiFi.disconnect(false, false);
 #endif
