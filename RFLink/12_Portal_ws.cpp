@@ -476,8 +476,8 @@ namespace RFLink { namespace Portal {
             }
 
             if(strcmp(type, "network_status") == 0) {
-              StaticJsonDocument<512> reply;
-              JsonObject status = reply.to<JsonObject>();
+              wsStatusDoc.clear();
+              JsonObject status = wsStatusDoc.to<JsonObject>();
               status[F("type")] = F("network_status");
               status[F("id")] = requestId;
               status[F("millis")] = millis();
@@ -487,7 +487,10 @@ namespace RFLink { namespace Portal {
               status[F("ws_errors")] = wsErrorCount;
               status[F("raw_tx_phase_at_boot")] = RFLink::rawTxPhaseAtBoot();
               RFLink::Wifi::getConnectionDiagnostics(status);
-              wsSendJsonToClient(client, reply);
+              if(wsStatusDoc.overflowed())
+                wsSendError(client, requestId, F("Network status exceeds capacity"));
+              else
+                wsSendJsonToClient(client, wsStatusDoc);
               return;
             }
 

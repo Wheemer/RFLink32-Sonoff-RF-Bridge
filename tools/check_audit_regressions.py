@@ -31,6 +31,12 @@ ap_persist = wifi.split("bool persistAccessPointDisabledAfterClientConnect()", 1
 )[0]
 assert "if(!Config::saveConfigToFlash()) {\n              item->setBoolValue(true);" in ap_persist
 ws = source("12_Portal_ws.cpp")
+network = ws.split('strcmp(type, "network_status")', 1)[1].split(
+    "if(RFLink::UpdateSecurity::isPending())", 1
+)[0]
+assert "StaticJsonDocument" not in network
+assert network.index("wsStatusDoc.clear()") < network.index("getConnectionDiagnostics(status)")
+assert network.index("wsStatusDoc.overflowed()") < network.index("wsSendJsonToClient(client, wsStatusDoc)")
 assert "!jobExecuting" in ws
 assert ws.index("jobExecuting = true;", ws.index("void processWebSocketJobs")) < ws.index(
     "::RFLink::executeCliCommand(activeJob.command)"
