@@ -73,6 +73,7 @@ namespace RFLink { namespace Wifi {
         volatile uint32_t stationDisconnectAt = 0;
         volatile uint32_t stationDisconnectReason = 0;
         uint32_t stationGotIpCount = 0;
+        uint32_t stationFirstIpAt = 0;
         uint32_t stationAssociationCount = 0;
         unsigned long setupAccessPointClientConnectedAt = 0;
         unsigned long stationReconnectAt = 0;
@@ -754,7 +755,8 @@ namespace RFLink { namespace Wifi {
           if(!WiFi.isConnected())
             return;
           clearStationReconnectSchedule();
-          stationGotIpCount++;
+          if(stationGotIpCount++ == 0)
+            stationFirstIpAt = millis();
           Serial.print(F("WiFi Client has received a new IP: "));
           Serial.println(WiFi.localIP());
 #ifndef RFLINK_PORTAL_DISABLED
@@ -886,6 +888,7 @@ void eventHandler_WiFiStationDisconnected(const WiFiEventStationModeDisconnected
           output[F("wifi_last_disconnect_ms")] = stationDisconnectAt;
           output[F("wifi_last_disconnect_reason")] = stationDisconnectReason;
           output[F("wifi_got_ip")] = stationGotIpCount;
+          output[F("wifi_first_ip_ms")] = stationFirstIpAt;
           output[F("wifi_associations_started")] = stationAssociationCount;
 #ifdef ESP8266
           output[F("wifi_associated")] = stationAssociated;
